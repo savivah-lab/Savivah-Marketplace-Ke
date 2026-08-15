@@ -1,0 +1,618 @@
+import React, { useState, useEffect, useCallback } from "react";
+import {
+  ShoppingCart, Store, ShieldCheck, Package, Plus, Trash2, X,
+  CheckCircle2, Clock, Truck, RotateCcw, TrendingUp, LayoutGrid,
+  Wallet, Search, LogIn, LogOut, UserPlus, Loader2, AlertTriangle
+} from "lucide-react";
+
+const GOLD = "#C9971C";
+const GOLD_DARK = "#9C740F";
+const INK = "#161513";
+const API_BASE = "https://savivah-backend.onrender.com/api";
+
+function money(n) {
+  return "KES " + Math.round(Number(n) || 0).toLocaleString();
+}
+
+const STATUS_META = {
+  pending_payment: { label: "Awaiting payment", color: "#8a8471", bg: "#F1EEE3", icon: Clock },
+  escrow_held: { label: "In escrow", color: "#9C740F", bg: "#FBF1DA", icon: Clock },
+  shipped: { label: "Shipped", color: "#1D4E89", bg: "#E7EFF9", icon: Truck },
+  delivered: { label: "Delivered", color: "#2E7D32", bg: "#E9F5EA", icon: CheckCircle2 },
+  refunded: { label: "Refunded", color: "#B3261E", bg: "#FBEAE9", icon: RotateCcw },
+  disputed: { label: "Disputed", color: "#B3261E", bg: "#FBEAE9", icon: AlertTriangle },
+};
+
+export default function SavivahApp() {
+  const [auth, setAuth] = useState(null); // { token, user }
+  const [role, setRole] = useState("customer");
+  const [cart, setCart] = useState([]);
+  const [showCart, setShowCart] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
+  const [search, setSearch] = useState("");
+  const [products, setProducts] = useState([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [toast, setToast] = useState(null);
+  const [apiDown, setApiDown] = useState(false);
+
+  const notify = useCallback((msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  }, []);
+
+  const apiFetch = useCallback(async (path, opts = {}) => {
+    const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
+    if (auth?.token) headers.Authorization = `Bearer ${auth.token}`;
+    const res = await fetch(`${API_BASE}${path}`, { ...opts, headers });
+    let data;
+    try { data = await res.json(); } catch { data = null; }
+    if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`);
+    return data;
+  }, [auth]);
+
+  const loadProducts = useCallback(() => {
+    setLoadingProducts(true);
+    fetch(`${API_BASE}/products${search ? `?search=${encodeURIComponent(search)}` : ""}`)
+      .then((r) => r.json())
+      .then((data) => { setProducts(Array.isArray(data) ? data : []); setApiDown(false); })
+      .catch(() => setApiDown(true))
+      .finally(() => setLoadingProducts(false));
+  }, [search]);
+
+  useEffect(() => { loadProducts(); }, [loadProducts]);
+
+  const addToCart = (product) => {
+    setCart((c) => {
+      const existing = c.find((i) => i.id === product.id);
+      if (existing) return c.map((i) => (i.id === product.id ? { ...i, qty: Math.min(i.qty + 1, product.stock) } : i));
+      return [...c, { ...product, qty: 1 }];
+    });
+    notify(`Added "${product.name}" to cart`);
+  };
+  const updateQty = (id, qty) => setCart((c) => c.map((i) => (i.id === id ? { ...i, qty: Math.max(1, qty) } : i)));
+  const removeFromCart = (id) => setCart((c) => c.filter((i) => i.id !== id));
+  const cartTotal = cart.reduce((s, i) => s + Number(i.price) * i.qty, 0);
+  const cartCount = cart.reduce((s, i) => s + i.qty, 0);
+
+  const logout = () => { setAuth(null); notify("Logged out"); };
+
+  return (
+    <div style={{ fontFamily: "'Segoe UI', Arial, sans-serif", background: "#FAF9F5", minHeight: "100vh", color: INK }}>
+      <TopBar role={role} setRole={setRole} cartCount={cartCount} onCartClick={() => setShowCart(true)}
+        auth={auth} onLoginClick={() => setShowAuth(true)} onLogout={logout} />
+
+      {toast && <Toast msg={toast} />}
+      {apiDown && (
+        <div style={{ background: "#FBEAE9", color: "#B3261E", padding: "10px 20px", fontSize: 13, textAlign: "center" }}>
+          Can't reach the Savivah API right now. If it's been idle, Render's free tier can take up to a minute to wake up — try refreshing shortly.
+        </div>
+      )}
+
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px 60px" }}>
+        {role === "customer" && (
+          <CustomerView products={products} loading={loadingProducts} search={search} setSearch={setSearch}
+            addToCart={addToCart} />
+        )}
+        {role === "seller" && (
+          <SellerView auth={auth} apiFetch={apiFetch} notify={notify} requireLogin={() => setShowAuth(true)} />
+        )}
+        {role === "admin" && (
+          <AdminView auth={auth} apiFetch={apiFetch} notify={notify} requireLogin={() => setShowAuth(true)} />
+        )}
+      </div>
+
+      {showCart && (
+        <CartDrawer cart={cart} onClose={() => setShowCart(false)} updateQty={updateQty} removeFromCart={removeFromCart}
+          total={cartTotal} auth={auth} apiFetch={apiFetch} notify={notify}
+          requireLogin={() => { setShowCart(false); setShowAuth(true); }}
+          onOrderPlaced={() => { setCart([]); setShowCart(false); loadProducts(); }} />
+      )}
+
+      {showAuth && (
+        <AuthModal onClose={() => setShowAuth(false)} onAuthed={(a) => { setAuth(a); setShowAuth(false); notify(`Welcome, ${a.user.fullName || a.user.email}`); }} />
+      )}
+    </div>
+  );
+}
+
+function Toast({ msg }) {
+  return (
+    <div style={{ position: "fixed", top: 70, left: "50%", transform: "translateX(-50%)", background: INK, color: "#fff",
+      padding: "10px 20px", borderRadius: 8, fontSize: 14, zIndex: 100, boxShadow: "0 6px 18px rgba(0,0,0,0.18)" }}>
+      {msg}
+    </div>
+  );
+}
+
+function Logo() {
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 2 }}>
+      <span style={{ fontSize: 26, fontWeight: 800, letterSpacing: 0.5,
+        background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DARK})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+        SAVIVAH
+      </span>
+      <span style={{ fontSize: 11, color: "#7A7669", fontWeight: 600, marginLeft: 4 }}>marketplace</span>
+    </div>
+  );
+}
+
+function TopBar({ role, setRole, cartCount, onCartClick, auth, onLoginClick, onLogout }) {
+  const tabs = [
+    { key: "customer", label: "Marketplace", icon: LayoutGrid },
+    { key: "seller", label: "Seller dashboard", icon: Store },
+    { key: "admin", label: "Admin", icon: ShieldCheck },
+  ];
+  return (
+    <div style={{ background: "#fff", borderBottom: "1px solid #ECE8DD", position: "sticky", top: 0, zIndex: 20 }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+        <Logo />
+        <div style={{ display: "flex", gap: 4, background: "#F4F1E8", borderRadius: 10, padding: 4 }}>
+          {tabs.map((t) => {
+            const Icon = t.icon; const active = role === t.key;
+            return (
+              <button key={t.key} onClick={() => setRole(t.key)} style={{
+                display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: "none",
+                cursor: "pointer", fontSize: 13.5, fontWeight: 600, background: active ? INK : "transparent",
+                color: active ? "#fff" : "#5B564A" }}>
+                <Icon size={15} /> {t.label}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {role === "customer" && (
+            <button onClick={onCartClick} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 16px",
+              borderRadius: 8, border: `1px solid ${GOLD}`, background: "#fff", cursor: "pointer", fontWeight: 600,
+              fontSize: 14, color: INK, position: "relative" }}>
+              <ShoppingCart size={17} color={GOLD_DARK} /> Cart
+              {cartCount > 0 && (
+                <span style={{ position: "absolute", top: -8, right: -8, background: GOLD, color: "#fff", borderRadius: "50%",
+                  width: 20, height: 20, fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{cartCount}</span>
+              )}
+            </button>
+          )}
+          {auth ? (
+            <button onClick={onLogout} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px",
+              borderRadius: 8, border: "1px solid #E4DFD0", background: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+              <LogOut size={14} /> {auth.user.fullName || auth.user.email}
+            </button>
+          ) : (
+            <button onClick={onLoginClick} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px",
+              borderRadius: 8, border: "none", background: INK, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+              <LogIn size={14} /> Log in
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AuthModal({ onClose, onAuthed }) {
+  const [mode, setMode] = useState("login"); // login | register
+  const [form, setForm] = useState({ fullName: "", email: "", phoneNumber: "", password: "", role: "customer" });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setLoading(true); setError("");
+    try {
+      const path = mode === "login" ? "/auth/login" : "/auth/register";
+      const body = mode === "login" ? { email: form.email, password: form.password } : form;
+      const res = await fetch(`${API_BASE}${path}`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Something went wrong");
+      onAuthed(data);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(20,18,12,0.4)" }} />
+      <div style={{ position: "relative", width: 380, maxWidth: "90vw", background: "#fff", borderRadius: 14, padding: 24 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ fontWeight: 800, fontSize: 17 }}>{mode === "login" ? "Log in" : "Create an account"}</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={20} /></button>
+        </div>
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {mode === "register" && (
+            <>
+              <input placeholder="Full name" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} style={inputStyle} required />
+              <input placeholder="Phone number (07...)" value={form.phoneNumber} onChange={(e) => setForm({ ...form, phoneNumber: e.target.value })} style={inputStyle} required />
+              <div style={{ display: "flex", gap: 8 }}>
+                <label style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, fontSize: 13, border: "1px solid #E4DFD0", borderRadius: 7, padding: "9px 11px", cursor: "pointer" }}>
+                  <input type="radio" checked={form.role === "customer"} onChange={() => setForm({ ...form, role: "customer" })} /> Customer
+                </label>
+                <label style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, fontSize: 13, border: "1px solid #E4DFD0", borderRadius: 7, padding: "9px 11px", cursor: "pointer" }}>
+                  <input type="radio" checked={form.role === "seller"} onChange={() => setForm({ ...form, role: "seller" })} /> Seller
+                </label>
+              </div>
+            </>
+          )}
+          <input type="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} style={inputStyle} required />
+          <input type="password" placeholder="Password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} style={inputStyle} required />
+          {error && <div style={{ fontSize: 12.5, color: "#B3261E" }}>{error}</div>}
+          <button type="submit" disabled={loading} style={{ padding: "11px 0", borderRadius: 8, border: "none", background: GOLD,
+            color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            {loading ? <Loader2 size={15} className="spin" /> : mode === "login" ? <LogIn size={15} /> : <UserPlus size={15} />}
+            {mode === "login" ? "Log in" : "Create account"}
+          </button>
+        </form>
+        <div style={{ textAlign: "center", marginTop: 14, fontSize: 12.5, color: "#77715f" }}>
+          {mode === "login" ? "New to Savivah? " : "Already have an account? "}
+          <button onClick={() => setMode(mode === "login" ? "register" : "login")} style={{ background: "none", border: "none", color: GOLD_DARK, fontWeight: 700, cursor: "pointer" }}>
+            {mode === "login" ? "Create one" : "Log in"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CustomerView({ products, loading, search, setSearch, addToCart }) {
+  return (
+    <div>
+      <div style={{ margin: "4px 0 22px" }}>
+        <h1 style={{ fontSize: 24, fontWeight: 800, margin: "0 0 4px" }}>Shop the marketplace</h1>
+        <p style={{ color: "#77715f", fontSize: 14, margin: 0 }}>
+          Live data from the Savivah API — every store here is independently owned. Payment is held in escrow until delivery is confirmed.
+        </p>
+      </div>
+      <div style={{ position: "relative", maxWidth: 360, marginBottom: 20 }}>
+        <Search size={16} style={{ position: "absolute", left: 12, top: 12, color: "#9a9484" }} />
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search products..."
+          style={{ width: "100%", padding: "10px 12px 10px 34px", borderRadius: 8, border: "1px solid #E4DFD0", fontSize: 14, boxSizing: "border-box" }} />
+      </div>
+      {loading ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#9a9484", fontSize: 14, padding: 40, justifyContent: "center" }}>
+          <Loader2 size={16} className="spin" /> Loading products...
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 16 }}>
+          {products.map((p) => (
+            <div key={p.id} style={{ background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ height: 110, borderRadius: 8, background: "#F4F1E8", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Package size={34} color="#C9C2AB" />
+              </div>
+              <div style={{ fontSize: 11, color: GOLD_DARK, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+                <Store size={11} /> {p.store_name}
+              </div>
+              <div style={{ fontWeight: 700, fontSize: 14.5, lineHeight: 1.3 }}>{p.name}</div>
+              <div style={{ fontSize: 12, color: "#8a8471" }}>{p.stock} in stock</div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
+                <span style={{ fontWeight: 800, fontSize: 16 }}>{money(p.price)}</span>
+                <button onClick={() => addToCart(p)} disabled={p.stock === 0} style={{
+                  display: "flex", alignItems: "center", gap: 4, padding: "7px 12px", borderRadius: 7, border: "none",
+                  cursor: p.stock ? "pointer" : "not-allowed", background: p.stock ? INK : "#D9D4C4", color: "#fff", fontSize: 12.5, fontWeight: 600 }}>
+                  <Plus size={13} /> Add
+                </button>
+              </div>
+            </div>
+          ))}
+          {products.length === 0 && (
+            <div style={{ color: "#9a9484", fontSize: 14, gridColumn: "1/-1", padding: 40, textAlign: "center" }}>
+              No products yet — list one from the Seller dashboard tab.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CartDrawer({ cart, onClose, updateQty, removeFromCart, total, auth, apiFetch, notify, requireLogin, onOrderPlaced }) {
+  const [address, setAddress] = useState("");
+  const [placing, setPlacing] = useState(false);
+  const commission = total * 0.10;
+
+  const checkout = async () => {
+    if (!auth) return requireLogin();
+    if (!address.trim()) return notify("Add a delivery address first");
+    setPlacing(true);
+    try {
+      const byStore = {};
+      cart.forEach((item) => {
+        if (!byStore[item.store_id]) byStore[item.store_id] = [];
+        byStore[item.store_id].push(item);
+      });
+      let lastRedirect = null;
+      for (const [storeId, items] of Object.entries(byStore)) {
+        const result = await apiFetch("/checkout", {
+          method: "POST",
+          body: JSON.stringify({
+            storeId,
+            items: items.map((i) => ({ productId: i.id, quantity: i.qty })),
+            deliveryAddress: address,
+          }),
+        });
+        lastRedirect = result.redirectUrl;
+      }
+      notify("Order created — redirecting to Pesapal to pay");
+      onOrderPlaced();
+      if (lastRedirect) window.open(lastRedirect, "_blank");
+    } catch (e) {
+      notify(e.message);
+    } finally {
+      setPlacing(false);
+    }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", justifyContent: "flex-end" }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(20,18,12,0.35)" }} />
+      <div style={{ position: "relative", width: 380, maxWidth: "92vw", background: "#fff", height: "100%", boxShadow: "-8px 0 24px rgba(0,0,0,0.12)", display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "18px 20px", borderBottom: "1px solid #ECE8DD", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>Your cart</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={20} /></button>
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "12px 20px" }}>
+          {cart.length === 0 && <div style={{ color: "#9a9484", fontSize: 14, padding: "30px 0", textAlign: "center" }}>Your cart is empty.</div>}
+          {cart.map((item) => (
+            <div key={item.id} style={{ display: "flex", gap: 10, padding: "12px 0", borderBottom: "1px solid #F1EEE3" }}>
+              <div style={{ width: 48, height: 48, borderRadius: 6, background: "#F4F1E8", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Package size={20} color="#C9C2AB" />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 13.5 }}>{item.name}</div>
+                <div style={{ fontSize: 11.5, color: "#8a8471", marginBottom: 6 }}>{item.store_name}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input type="number" min={1} max={item.stock} value={item.qty} onChange={(e) => updateQty(item.id, parseInt(e.target.value) || 1)}
+                    style={{ width: 46, padding: "4px 6px", border: "1px solid #E4DFD0", borderRadius: 5, fontSize: 12.5 }} />
+                  <span style={{ fontSize: 13, fontWeight: 700 }}>{money(item.price * item.qty)}</span>
+                </div>
+              </div>
+              <button onClick={() => removeFromCart(item.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#B3261E", alignSelf: "flex-start" }}><Trash2 size={15} /></button>
+            </div>
+          ))}
+        </div>
+        {cart.length > 0 && (
+          <div style={{ padding: 20, borderTop: "1px solid #ECE8DD" }}>
+            {!auth && (
+              <div style={{ fontSize: 12, color: "#9C740F", background: "#FBF1DA", padding: "8px 10px", borderRadius: 7, marginBottom: 10 }}>
+                Log in to check out — click "Log in" up top.
+              </div>
+            )}
+            <input placeholder="Delivery address" value={address} onChange={(e) => setAddress(e.target.value)}
+              style={{ width: "100%", padding: "9px 11px", borderRadius: 7, border: "1px solid #E4DFD0", fontSize: 13, marginBottom: 12, boxSizing: "border-box" }} />
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#77715f", marginBottom: 4 }}><span>Subtotal</span><span>{money(total)}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: "#9a9484", marginBottom: 10 }}><span>Includes Savivah service fee</span><span>{money(commission)}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: 16, marginBottom: 14 }}><span>Total</span><span>{money(total)}</span></div>
+            <button onClick={checkout} disabled={placing} style={{ width: "100%", padding: "12px 0", borderRadius: 9, border: "none", background: GOLD,
+              color: "#fff", fontWeight: 700, fontSize: 14.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              {placing ? <Loader2 size={16} className="spin" /> : <Wallet size={16} />} Pay via Pesapal
+            </button>
+            <div style={{ fontSize: 11, color: "#9a9484", marginTop: 8, textAlign: "center" }}>Opens Pesapal's checkout in a new tab. Funds are held in escrow until delivery is confirmed.</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SellerView({ auth, apiFetch, notify, requireLogin }) {
+  const [myStores, setMyStores] = useState([]);
+  const [activeStoreId, setActiveStoreId] = useState(null);
+  const [products, setProducts] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [storeForm, setStoreForm] = useState({ name: "", businessRegNumber: "", payoutMethod: "mpesa", payoutAccount: "" });
+  const [productForm, setProductForm] = useState({ name: "", price: "", stock: "", category: "" });
+  const [loading, setLoading] = useState(false);
+
+  if (!auth || auth.user.role !== "seller") {
+    return (
+      <EmptyState icon={Store} title="Seller access required"
+        message="Log in with a seller account to manage your store, list products, and view orders."
+        actionLabel="Log in as a seller" onAction={requireLogin} />
+    );
+  }
+
+  const loadStoreOrders = useCallback(async (storeId) => {
+    try {
+      setOrders(await apiFetch(`/stores/${storeId}/orders`));
+    } catch (e) { notify(e.message); }
+  }, [apiFetch, notify]);
+
+  const createStore = async (e) => {
+    e.preventDefault();
+    if (!storeForm.name) return;
+    setLoading(true);
+    try {
+      const store = await apiFetch("/stores", { method: "POST", body: JSON.stringify(storeForm) });
+      setMyStores((s) => [...s, store]);
+      setActiveStoreId(store.id);
+      notify(`"${store.name}" created`);
+    } catch (e) { notify(e.message); } finally { setLoading(false); }
+  };
+
+  const addProduct = async (e) => {
+    e.preventDefault();
+    if (!activeStoreId || !productForm.name || !productForm.price || !productForm.stock) return;
+    try {
+      const p = await apiFetch(`/stores/${activeStoreId}/products`, {
+        method: "POST",
+        body: JSON.stringify({ ...productForm, price: parseFloat(productForm.price), stock: parseInt(productForm.stock) }),
+      });
+      setProducts((ps) => [p, ...ps]);
+      setProductForm({ name: "", price: "", stock: "", category: "" });
+      notify(`"${p.name}" listed`);
+    } catch (e) { notify(e.message); }
+  };
+
+  useEffect(() => { if (activeStoreId) loadStoreOrders(activeStoreId); }, [activeStoreId, loadStoreOrders]);
+
+  const pendingEarnings = orders.filter((o) => ["escrow_held", "shipped"].includes(o.status)).reduce((s, o) => s + Number(o.payout_amount), 0);
+  const releasedEarnings = orders.filter((o) => o.status === "delivered").reduce((s, o) => s + Number(o.payout_amount), 0);
+
+  return (
+    <div>
+      <div style={{ marginBottom: 20 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 800, margin: "0 0 4px" }}>Seller dashboard</h1>
+        <p style={{ color: "#77715f", fontSize: 14, margin: 0 }}>Logged in as {auth.user.email}</p>
+      </div>
+
+      {myStores.length === 0 ? (
+        <div style={{ background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 18, maxWidth: 420 }}>
+          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Create your store</div>
+          <div style={{ fontSize: 12.5, color: "#8a8471", marginBottom: 12 }}>You don't have a store yet on this account — create one to start listing products.</div>
+          <form onSubmit={createStore} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <input placeholder="Store name" value={storeForm.name} onChange={(e) => setStoreForm({ ...storeForm, name: e.target.value })} style={inputStyle} required />
+            <input placeholder="Business reg. number (optional)" value={storeForm.businessRegNumber} onChange={(e) => setStoreForm({ ...storeForm, businessRegNumber: e.target.value })} style={inputStyle} />
+            <input placeholder="M-Pesa number for payouts" value={storeForm.payoutAccount} onChange={(e) => setStoreForm({ ...storeForm, payoutAccount: e.target.value })} style={inputStyle} />
+            <button type="submit" disabled={loading} style={{ padding: "10px 0", borderRadius: 8, border: "none", background: INK, color: "#fff", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>
+              {loading ? "Creating..." : "Create store"}
+            </button>
+          </form>
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 24 }}>
+            <StatCard label="Store" value={myStores.find((s) => s.id === activeStoreId)?.name} sub="Active store" icon={Store} />
+            <StatCard label="Pending in escrow" value={money(pendingEarnings)} sub="Released after delivery" icon={Clock} />
+            <StatCard label="Paid out" value={money(releasedEarnings)} sub="After 10% commission" icon={TrendingUp} />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1.4fr", gap: 20, alignItems: "flex-start" }}>
+            <div style={{ background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 18 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>List a new product</div>
+              <form onSubmit={addProduct} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <input placeholder="Product name" value={productForm.name} onChange={(e) => setProductForm({ ...productForm, name: e.target.value })} style={inputStyle} />
+                <input placeholder="Category" value={productForm.category} onChange={(e) => setProductForm({ ...productForm, category: e.target.value })} style={inputStyle} />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input placeholder="Price (KES)" type="number" value={productForm.price} onChange={(e) => setProductForm({ ...productForm, price: e.target.value })} style={inputStyle} />
+                  <input placeholder="Stock qty" type="number" value={productForm.stock} onChange={(e) => setProductForm({ ...productForm, stock: e.target.value })} style={inputStyle} />
+                </div>
+                <button type="submit" style={{ padding: "10px 0", borderRadius: 8, border: "none", background: INK, color: "#fff", fontWeight: 700, fontSize: 13.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                  <Plus size={15} /> Add to my store
+                </button>
+              </form>
+              <div style={{ fontWeight: 700, fontSize: 15, margin: "22px 0 10px" }}>Your listings ({products.length})</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 200, overflowY: "auto" }}>
+                {products.map((p) => (
+                  <div key={p.id} style={{ padding: "8px 10px", background: "#FAF9F5", borderRadius: 7, fontSize: 13 }}>
+                    <b>{p.name}</b> — {money(p.price)} · {p.stock} in stock
+                  </div>
+                ))}
+                {products.length === 0 && <div style={{ fontSize: 13, color: "#9a9484" }}>No products listed yet this session.</div>}
+              </div>
+            </div>
+            <div style={{ background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 18 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Orders for your store</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {orders.map((o) => <OrderRow key={o.id} order={o} />)}
+                {orders.length === 0 && <div style={{ fontSize: 13, color: "#9a9484" }}>No orders yet for this store.</div>}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function AdminView({ auth, apiFetch, notify, requireLogin }) {
+  const [orders, setOrders] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [o, s] = await Promise.all([apiFetch("/admin/orders"), apiFetch("/admin/stats")]);
+      setOrders(o); setStats(s);
+    } catch (e) { notify(e.message); } finally { setLoading(false); }
+  }, [apiFetch, notify]);
+
+  useEffect(() => { if (auth?.user.role === "admin") load(); }, [auth, load]);
+
+  if (!auth || auth.user.role !== "admin") {
+    return (
+      <EmptyState icon={ShieldCheck} title="Admin access required"
+        message="Admin accounts aren't self-registered for security. After registering, an existing admin needs to run a SQL update to grant the role (UPDATE users SET role = 'admin' WHERE email = '...') directly on the database."
+        actionLabel="Log in" onAction={requireLogin} />
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ marginBottom: 20 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 800, margin: "0 0 4px" }}>Admin panel</h1>
+        <p style={{ color: "#77715f", fontSize: 14, margin: 0 }}>Platform-wide orders and revenue.</p>
+      </div>
+      {loading ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#9a9484", fontSize: 14, padding: 40, justifyContent: "center" }}>
+          <Loader2 size={16} className="spin" /> Loading...
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 24 }}>
+            <StatCard label="Commission earned" value={money(stats?.commission_earned)} sub="From delivered orders" icon={TrendingUp} />
+            <StatCard label="Funds in escrow" value={money(stats?.in_escrow)} sub="Awaiting delivery" icon={Wallet} />
+            <StatCard label="Total orders" value={stats?.total_orders ?? 0} sub="All time" icon={Package} />
+          </div>
+          <div style={{ background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 18 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>All orders</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {orders.map((o) => <OrderRow key={o.id} order={o} storeName={o.store_name} />)}
+              {orders.length === 0 && <div style={{ fontSize: 13, color: "#9a9484" }}>No orders placed on the platform yet.</div>}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function EmptyState({ icon: Icon, title, message, actionLabel, onAction }) {
+  return (
+    <div style={{ textAlign: "center", padding: "60px 20px", maxWidth: 440, margin: "0 auto" }}>
+      <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#F4F1E8", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+        <Icon size={24} color={GOLD_DARK} />
+      </div>
+      <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 8 }}>{title}</div>
+      <div style={{ fontSize: 13.5, color: "#77715f", marginBottom: 18, lineHeight: 1.5 }}>{message}</div>
+      <button onClick={onAction} style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: INK, color: "#fff", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>
+        {actionLabel}
+      </button>
+    </div>
+  );
+}
+
+function OrderRow({ order, storeName }) {
+  const meta = STATUS_META[order.status] || STATUS_META.pending_payment;
+  const Icon = meta.icon;
+  return (
+    <div style={{ border: "1px solid #EFEBDF", borderRadius: 10, padding: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
+        <div>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: "#5B564A" }}>
+            {storeName ? `${storeName} · ` : ""}Order #{String(order.id).slice(-6)}
+          </div>
+        </div>
+        <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 700, color: meta.color, background: meta.bg, padding: "4px 10px", borderRadius: 20 }}>
+          <Icon size={12} /> {meta.label}
+        </span>
+      </div>
+      <div style={{ fontSize: 12.5, color: "#5B564A", marginTop: 10 }}>
+        Total <b>{money(order.subtotal)}</b> &nbsp;·&nbsp; Payout <b>{money(order.payout_amount)}</b>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, sub, icon: Icon }) {
+  return (
+    <div style={{ background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#9a9484", fontSize: 12, fontWeight: 600, marginBottom: 8 }}><Icon size={14} /> {label}</div>
+      <div style={{ fontSize: 19, fontWeight: 800 }}>{value}</div>
+      {sub && <div style={{ fontSize: 11.5, color: "#9a9484", marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+}
+
+const inputStyle = { flex: 1, padding: "9px 11px", borderRadius: 7, border: "1px solid #E4DFD0", fontSize: 13, boxSizing: "border-box" };
