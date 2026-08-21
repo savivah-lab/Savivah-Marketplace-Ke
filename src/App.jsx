@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   ShoppingCart, Store, ShieldCheck, Package, Plus, Trash2, X,
   CheckCircle2, Clock, Truck, RotateCcw, TrendingUp, LayoutGrid,
@@ -9,6 +9,7 @@ const GOLD = "#C9971C";
 const GOLD_DARK = "#9C740F";
 const INK = "#161513";
 const API_BASE = "https://savivah-backend.onrender.com/api";
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
 
 function money(n) {
   return "KES " + Math.round(Number(n) || 0).toLocaleString();
@@ -193,6 +194,42 @@ function AuthModal({ onClose, onAuthed }) {
   const [form, setForm] = useState({ fullName: "", email: "", phoneNumber: "", password: "", role: "customer" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const googleBtnRef = useRef(null);
+
+  const handleGoogleCredential = useCallback(async (response) => {
+    setError(""); setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/google`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken: response.credential, role: form.role }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Google sign-in failed");
+      onAuthed(data);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [form.role, onAuthed]);
+
+  useEffect(() => {
+    if (!GOOGLE_CLIENT_ID) return; // no Client ID configured — button just won't render
+    const renderButton = () => {
+      if (!window.google || !googleBtnRef.current) return;
+      window.google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleGoogleCredential });
+      window.google.accounts.id.renderButton(googleBtnRef.current, { theme: "outline", size: "large", width: 332 });
+    };
+    if (window.google) {
+      renderButton();
+    } else {
+      const script = document.createElement("script");
+      script.src = "https://accounts.google.com/gsi/client";
+      script.async = true;
+      script.onload = renderButton;
+      document.body.appendChild(script);
+    }
+  }, [handleGoogleCredential]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -221,19 +258,34 @@ function AuthModal({ onClose, onAuthed }) {
           <div style={{ fontWeight: 800, fontSize: 17 }}>{mode === "login" ? "Log in" : "Create an account"}</div>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={20} /></button>
         </div>
+
+        {mode === "register" && (
+          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+            <label style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, fontSize: 13, border: "1px solid #E4DFD0", borderRadius: 7, padding: "9px 11px", cursor: "pointer" }}>
+              <input type="radio" checked={form.role === "customer"} onChange={() => setForm({ ...form, role: "customer" })} /> Customer
+            </label>
+            <label style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, fontSize: 13, border: "1px solid #E4DFD0", borderRadius: 7, padding: "9px 11px", cursor: "pointer" }}>
+              <input type="radio" checked={form.role === "seller"} onChange={() => setForm({ ...form, role: "seller" })} /> Seller
+            </label>
+          </div>
+        )}
+
+        {GOOGLE_CLIENT_ID && (
+          <>
+            <div ref={googleBtnRef} style={{ display: "flex", justifyContent: "center", marginBottom: 14 }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0 16px", color: "#9a9484", fontSize: 12 }}>
+              <div style={{ flex: 1, height: 1, background: "#ECE8DD" }} />
+              or continue with email
+              <div style={{ flex: 1, height: 1, background: "#ECE8DD" }} />
+            </div>
+          </>
+        )}
+
         <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {mode === "register" && (
             <>
               <input placeholder="Full name" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} style={inputStyle} required />
               <input placeholder="Phone number (07...)" value={form.phoneNumber} onChange={(e) => setForm({ ...form, phoneNumber: e.target.value })} style={inputStyle} required />
-              <div style={{ display: "flex", gap: 8 }}>
-                <label style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, fontSize: 13, border: "1px solid #E4DFD0", borderRadius: 7, padding: "9px 11px", cursor: "pointer" }}>
-                  <input type="radio" checked={form.role === "customer"} onChange={() => setForm({ ...form, role: "customer" })} /> Customer
-                </label>
-                <label style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, fontSize: 13, border: "1px solid #E4DFD0", borderRadius: 7, padding: "9px 11px", cursor: "pointer" }}>
-                  <input type="radio" checked={form.role === "seller"} onChange={() => setForm({ ...form, role: "seller" })} /> Seller
-                </label>
-              </div>
             </>
           )}
           <input type="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} style={inputStyle} required />
@@ -278,8 +330,13 @@ function CustomerView({ products, loading, search, setSearch, addToCart }) {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 16 }}>
           {products.map((p) => (
             <div key={p.id} style={{ background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ height: 110, borderRadius: 8, background: "#F4F1E8", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <Package size={34} color="#C9C2AB" />
+              <div style={{ height: 110, borderRadius: 8, background: "#F4F1E8", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                {p.image_url ? (
+                  <img src={p.image_url} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    onError={(e) => { e.target.style.display = "none"; }} />
+                ) : (
+                  <Package size={34} color="#C9C2AB" />
+                )}
               </div>
               <div style={{ fontSize: 11, color: GOLD_DARK, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
                 <Store size={11} /> {p.store_name}
@@ -402,7 +459,7 @@ function SellerView({ auth, apiFetch, notify, requireLogin }) {
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [storeForm, setStoreForm] = useState({ name: "", businessRegNumber: "", payoutMethod: "mpesa", payoutAccount: "" });
-  const [productForm, setProductForm] = useState({ name: "", price: "", stock: "", category: "" });
+  const [productForm, setProductForm] = useState({ name: "", price: "", stock: "", category: "", description: "", imageUrl: "" });
   const [loading, setLoading] = useState(false);
 
   if (!auth || auth.user.role !== "seller") {
@@ -440,7 +497,7 @@ function SellerView({ auth, apiFetch, notify, requireLogin }) {
         body: JSON.stringify({ ...productForm, price: parseFloat(productForm.price), stock: parseInt(productForm.stock) }),
       });
       setProducts((ps) => [p, ...ps]);
-      setProductForm({ name: "", price: "", stock: "", category: "" });
+      setProductForm({ name: "", price: "", stock: "", category: "", description: "", imageUrl: "" });
       notify(`"${p.name}" listed`);
     } catch (e) { notify(e.message); }
   };
@@ -483,6 +540,9 @@ function SellerView({ auth, apiFetch, notify, requireLogin }) {
               <form onSubmit={addProduct} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <input placeholder="Product name" value={productForm.name} onChange={(e) => setProductForm({ ...productForm, name: e.target.value })} style={inputStyle} />
                 <input placeholder="Category" value={productForm.category} onChange={(e) => setProductForm({ ...productForm, category: e.target.value })} style={inputStyle} />
+                <textarea placeholder="Description" value={productForm.description} onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
+                  style={{ ...inputStyle, minHeight: 60, resize: "vertical", fontFamily: "inherit" }} />
+                <input placeholder="Image URL (e.g. from a photo hosting link)" value={productForm.imageUrl} onChange={(e) => setProductForm({ ...productForm, imageUrl: e.target.value })} style={inputStyle} />
                 <div style={{ display: "flex", gap: 8 }}>
                   <input placeholder="Price (KES)" type="number" value={productForm.price} onChange={(e) => setProductForm({ ...productForm, price: e.target.value })} style={inputStyle} />
                   <input placeholder="Stock qty" type="number" value={productForm.stock} onChange={(e) => setProductForm({ ...productForm, stock: e.target.value })} style={inputStyle} />
@@ -516,33 +576,52 @@ function SellerView({ auth, apiFetch, notify, requireLogin }) {
 }
 
 function AdminView({ auth, apiFetch, notify, requireLogin }) {
+  const [tab, setTab] = useState("orders"); // orders | sellers | payouts
   const [orders, setOrders] = useState([]);
+  const [sellers, setSellers] = useState([]);
+  const [payouts, setPayouts] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [o, s] = await Promise.all([apiFetch("/admin/orders"), apiFetch("/admin/stats")]);
-      setOrders(o); setStats(s);
+      const [o, s, sellerList, payoutList] = await Promise.all([
+        apiFetch("/admin/orders"), apiFetch("/admin/stats"), apiFetch("/admin/sellers"), apiFetch("/admin/payouts"),
+      ]);
+      setOrders(o); setStats(s); setSellers(sellerList); setPayouts(payoutList);
     } catch (e) { notify(e.message); } finally { setLoading(false); }
   }, [apiFetch, notify]);
 
   useEffect(() => { if (auth?.user.role === "admin") load(); }, [auth, load]);
 
+  const dispatchPayout = async (payoutId) => {
+    try {
+      await apiFetch(`/admin/payouts/${payoutId}/mark-sent`, { method: "POST" });
+      notify("Payout marked as sent");
+      load();
+    } catch (e) { notify(e.message); }
+  };
+
   if (!auth || auth.user.role !== "admin") {
     return (
       <EmptyState icon={ShieldCheck} title="Admin access required"
-        message="Admin accounts aren't self-registered for security. After registering, an existing admin needs to run a SQL update to grant the role (UPDATE users SET role = 'admin' WHERE email = '...') directly on the database."
+        message="Log in with a @savivah.co.ke email — those accounts are automatically given admin access on registration."
         actionLabel="Log in" onAction={requireLogin} />
     );
   }
+
+  const tabs = [
+    { key: "orders", label: "Orders" },
+    { key: "sellers", label: "Sellers" },
+    { key: "payouts", label: "Payouts" },
+  ];
 
   return (
     <div>
       <div style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: 24, fontWeight: 800, margin: "0 0 4px" }}>Admin panel</h1>
-        <p style={{ color: "#77715f", fontSize: 14, margin: 0 }}>Platform-wide orders and revenue.</p>
+        <p style={{ color: "#77715f", fontSize: 14, margin: 0 }}>Platform-wide orders, sellers, and payouts.</p>
       </div>
       {loading ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#9a9484", fontSize: 14, padding: 40, justifyContent: "center" }}>
@@ -550,18 +629,77 @@ function AdminView({ auth, apiFetch, notify, requireLogin }) {
         </div>
       ) : (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 24 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 20 }}>
             <StatCard label="Commission earned" value={money(stats?.commission_earned)} sub="From delivered orders" icon={TrendingUp} />
             <StatCard label="Funds in escrow" value={money(stats?.in_escrow)} sub="Awaiting delivery" icon={Wallet} />
             <StatCard label="Total orders" value={stats?.total_orders ?? 0} sub="All time" icon={Package} />
           </div>
-          <div style={{ background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 18 }}>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>All orders</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {orders.map((o) => <OrderRow key={o.id} order={o} storeName={o.store_name} />)}
-              {orders.length === 0 && <div style={{ fontSize: 13, color: "#9a9484" }}>No orders placed on the platform yet.</div>}
-            </div>
+
+          <div style={{ display: "flex", gap: 4, background: "#F4F1E8", borderRadius: 10, padding: 4, marginBottom: 16, width: "fit-content" }}>
+            {tabs.map((t) => (
+              <button key={t.key} onClick={() => setTab(t.key)} style={{
+                padding: "7px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600,
+                background: tab === t.key ? INK : "transparent", color: tab === t.key ? "#fff" : "#5B564A" }}>
+                {t.label}
+              </button>
+            ))}
           </div>
+
+          {tab === "orders" && (
+            <div style={{ background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 18 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>All orders</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {orders.map((o) => <OrderRow key={o.id} order={o} storeName={o.store_name} />)}
+                {orders.length === 0 && <div style={{ fontSize: 13, color: "#9a9484" }}>No orders placed on the platform yet.</div>}
+              </div>
+            </div>
+          )}
+
+          {tab === "sellers" && (
+            <div style={{ background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 18 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Sellers — earnings per store</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {sellers.map((s) => (
+                  <div key={s.id} style={{ border: "1px solid #EFEBDF", borderRadius: 10, padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 13.5 }}>{s.name} {s.verified && <span style={{ fontSize: 10.5, color: "#2E7D32", background: "#E9F5EA", padding: "2px 7px", borderRadius: 10, marginLeft: 6 }}>Verified</span>}</div>
+                      <div style={{ fontSize: 12, color: "#8a8471" }}>{s.owner_name} · {s.owner_email} · {s.total_orders} orders</div>
+                    </div>
+                    <div style={{ textAlign: "right", fontSize: 12.5 }}>
+                      <div>Pending escrow: <b>{money(s.pending_escrow)}</b></div>
+                      <div>Total earned: <b>{money(s.total_earned)}</b></div>
+                    </div>
+                  </div>
+                ))}
+                {sellers.length === 0 && <div style={{ fontSize: 13, color: "#9a9484" }}>No stores registered yet.</div>}
+              </div>
+            </div>
+          )}
+
+          {tab === "payouts" && (
+            <div style={{ background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 18 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Payouts to dispatch</div>
+              <div style={{ fontSize: 12, color: "#8a8471", marginBottom: 12 }}>Send the money via M-Pesa/bank yourself, then mark it sent here.</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {payouts.map((p) => (
+                  <div key={p.id} style={{ border: "1px solid #EFEBDF", borderRadius: 10, padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 13.5 }}>{p.store_name}</div>
+                      <div style={{ fontSize: 12, color: "#8a8471" }}>{money(p.amount)} via {p.payout_method || "—"} · {p.payout_account || "no payout account on file"}</div>
+                    </div>
+                    {p.status === "pending" ? (
+                      <button onClick={() => dispatchPayout(p.id)} style={{ padding: "7px 14px", borderRadius: 7, border: "none", background: GOLD, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+                        Mark sent
+                      </button>
+                    ) : (
+                      <span style={{ fontSize: 11.5, fontWeight: 700, color: "#2E7D32", background: "#E9F5EA", padding: "4px 10px", borderRadius: 20 }}>Sent</span>
+                    )}
+                  </div>
+                ))}
+                {payouts.length === 0 && <div style={{ fontSize: 13, color: "#9a9484" }}>No payouts yet — these appear once an order is delivered.</div>}
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
