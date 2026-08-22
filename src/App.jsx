@@ -634,11 +634,19 @@ function SellerView({ auth, apiFetch, notify, requireLogin }) {
                     {products.map((p) => (
                       editingId === p.id ? (
                         <div key={p.id} style={{ padding: 10, background: "#FAF9F5", borderRadius: 7, display: "flex", flexDirection: "column", gap: 6 }}>
-                          <input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} style={{ ...inputStyle, fontSize: 12.5 }} />
+                          <input placeholder="Product name" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} style={{ ...inputStyle, fontSize: 12.5 }} />
+                          <input placeholder="Category" value={editForm.category} onChange={(e) => setEditForm({ ...editForm, category: e.target.value })} style={{ ...inputStyle, fontSize: 12.5 }} />
+                          <textarea placeholder="Description" value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                            style={{ ...inputStyle, fontSize: 12.5, minHeight: 48, resize: "vertical", fontFamily: "inherit" }} />
+                          <input placeholder="Image URL" value={editForm.imageUrl} onChange={(e) => setEditForm({ ...editForm, imageUrl: e.target.value })} style={{ ...inputStyle, fontSize: 12.5 }} />
                           <div style={{ display: "flex", gap: 6 }}>
-                            <input type="number" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} style={{ ...inputStyle, fontSize: 12.5 }} />
-                            <input type="number" value={editForm.stock} onChange={(e) => setEditForm({ ...editForm, stock: e.target.value })} style={{ ...inputStyle, fontSize: 12.5 }} />
+                            <input type="number" placeholder="Price" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} style={{ ...inputStyle, fontSize: 12.5 }} />
+                            <input type="number" placeholder="Stock" value={editForm.stock} onChange={(e) => setEditForm({ ...editForm, stock: e.target.value })} style={{ ...inputStyle, fontSize: 12.5 }} />
                           </div>
+                          {editForm.imageUrl && (
+                            <img src={editForm.imageUrl} alt="Preview" style={{ width: "100%", height: 90, objectFit: "cover", borderRadius: 6 }}
+                              onError={(e) => { e.target.style.display = "none"; }} />
+                          )}
                           <div style={{ display: "flex", gap: 6 }}>
                             <button onClick={() => saveEdit(p.id)} style={{ flex: 1, padding: "6px 0", borderRadius: 6, border: "none", background: GOLD, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Save</button>
                             <button onClick={() => setEditingId(null)} style={{ flex: 1, padding: "6px 0", borderRadius: 6, border: "1px solid #E4DFD0", background: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
