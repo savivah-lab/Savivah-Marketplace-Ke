@@ -30,6 +30,7 @@ export default function SavivahApp() {
   const [cart, setCart] = useState([]);
   const [showCart, setShowCart] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
+  const [showThankYou, setShowThankYou] = useState(false);
   const [search, setSearch] = useState("");
   const [products, setProducts] = useState([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
@@ -106,8 +107,10 @@ export default function SavivahApp() {
         <CartDrawer cart={cart} onClose={() => setShowCart(false)} updateQty={updateQty} removeFromCart={removeFromCart}
           total={cartTotal} auth={auth} apiFetch={apiFetch} notify={notify}
           requireLogin={() => { setShowCart(false); setShowAuth(true); }}
-          onOrderPlaced={() => { setCart([]); setShowCart(false); loadProducts(); }} />
+          onOrderPlaced={() => { setCart([]); setShowCart(false); loadProducts(); setShowThankYou(true); }} />
       )}
+
+      {showThankYou && <ThankYouModal onClose={() => setShowThankYou(false)} />}
 
       {showAuth && (
         <AuthModal onClose={() => setShowAuth(false)} onAuthed={(a) => { setAuth(a); setShowAuth(false); notify(`Welcome, ${a.user.fullName || a.user.email}`); }} />
@@ -121,6 +124,30 @@ function Toast({ msg }) {
     <div style={{ position: "fixed", top: 70, left: "50%", transform: "translateX(-50%)", background: INK, color: "#fff",
       padding: "10px 20px", borderRadius: 8, fontSize: 14, zIndex: 100, boxShadow: "0 6px 18px rgba(0,0,0,0.18)" }}>
       {msg}
+    </div>
+  );
+}
+
+function ThankYouModal({ onClose }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 70, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(20,18,12,0.45)" }} />
+      <div style={{ position: "relative", width: 380, maxWidth: "90vw", background: "#fff", borderRadius: 16, padding: "32px 28px", textAlign: "center" }}>
+        <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#E9F5EA", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+          <CheckCircle2 size={28} color="#2E7D32" />
+        </div>
+        <div style={{ fontWeight: 800, fontSize: 19, marginBottom: 8 }}>Thank you for shopping with us!</div>
+        <p style={{ fontSize: 13.5, color: "#77715f", lineHeight: 1.5, margin: "0 0 8px" }}>
+          Your order has been placed. We opened Pesapal in a new tab to complete payment — once that's done, your payment is held safely in escrow until delivery is confirmed.
+        </p>
+        <p style={{ fontSize: 13.5, color: "#77715f", lineHeight: 1.5, margin: "0 0 24px" }}>
+          <b>Expected delivery: within 2 days.</b>
+        </p>
+        <button onClick={onClose} style={{ padding: "11px 28px", borderRadius: 8, border: "none", background: GOLD,
+          color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
+          Continue shopping
+        </button>
+      </div>
     </div>
   );
 }
@@ -460,7 +487,31 @@ function SellerView({ auth, apiFetch, notify, requireLogin }) {
   const [orders, setOrders] = useState([]);
   const [storeForm, setStoreForm] = useState({ name: "", businessRegNumber: "", payoutMethod: "mpesa", payoutAccount: "" });
   const [productForm, setProductForm] = useState({ name: "", price: "", stock: "", category: "", description: "", imageUrl: "" });
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({});
   const [loading, setLoading] = useState(false);
+  const [storesLoaded, setStoresLoaded] = useState(false);
+
+  const loadMyStores = useCallback(async () => {
+    try {
+      const stores = await apiFetch("/my/stores");
+      setMyStores(stores);
+      if (stores.length > 0) setActiveStoreId((current) => current || stores[0].id);
+    } catch (e) { notify(e.message); } finally { setStoresLoaded(true); }
+  }, [apiFetch, notify]);
+
+  const loadStoreProducts = useCallback(async (storeId) => {
+    try { setProducts(await apiFetch(`/stores/${storeId}/products`)); } catch (e) { notify(e.message); }
+  }, [apiFetch, notify]);
+
+  const loadStoreOrders = useCallback(async (storeId) => {
+    try { setOrders(await apiFetch(`/stores/${storeId}/orders`)); } catch (e) { notify(e.message); }
+  }, [apiFetch, notify]);
+
+  useEffect(() => { if (auth?.user.role === "seller") loadMyStores(); }, [auth, loadMyStores]);
+  useEffect(() => {
+    if (activeStoreId) { loadStoreProducts(activeStoreId); loadStoreOrders(activeStoreId); }
+  }, [activeStoreId, loadStoreProducts, loadStoreOrders]);
 
   if (!auth || auth.user.role !== "seller") {
     return (
@@ -470,20 +521,15 @@ function SellerView({ auth, apiFetch, notify, requireLogin }) {
     );
   }
 
-  const loadStoreOrders = useCallback(async (storeId) => {
-    try {
-      setOrders(await apiFetch(`/stores/${storeId}/orders`));
-    } catch (e) { notify(e.message); }
-  }, [apiFetch, notify]);
-
   const createStore = async (e) => {
     e.preventDefault();
     if (!storeForm.name) return;
     setLoading(true);
     try {
       const store = await apiFetch("/stores", { method: "POST", body: JSON.stringify(storeForm) });
-      setMyStores((s) => [...s, store]);
+      setMyStores((s) => [store, ...s]);
       setActiveStoreId(store.id);
+      setStoreForm({ name: "", businessRegNumber: "", payoutMethod: "mpesa", payoutAccount: "" });
       notify(`"${store.name}" created`);
     } catch (e) { notify(e.message); } finally { setLoading(false); }
   };
@@ -502,73 +548,125 @@ function SellerView({ auth, apiFetch, notify, requireLogin }) {
     } catch (e) { notify(e.message); }
   };
 
-  useEffect(() => { if (activeStoreId) loadStoreOrders(activeStoreId); }, [activeStoreId, loadStoreOrders]);
+  const startEdit = (p) => {
+    setEditingId(p.id);
+    setEditForm({ name: p.name, description: p.description || "", category: p.category || "", price: p.price, stock: p.stock, imageUrl: p.image_url || "" });
+  };
+
+  const saveEdit = async (id) => {
+    try {
+      const updated = await apiFetch(`/products/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ ...editForm, price: parseFloat(editForm.price), stock: parseInt(editForm.stock) }),
+      });
+      setProducts((ps) => ps.map((p) => (p.id === id ? updated : p)));
+      setEditingId(null);
+      notify(`"${updated.name}" updated`);
+    } catch (e) { notify(e.message); }
+  };
 
   const pendingEarnings = orders.filter((o) => ["escrow_held", "shipped"].includes(o.status)).reduce((s, o) => s + Number(o.payout_amount), 0);
   const releasedEarnings = orders.filter((o) => o.status === "delivered").reduce((s, o) => s + Number(o.payout_amount), 0);
+  const activeStore = myStores.find((s) => s.id === activeStoreId);
 
   return (
     <div>
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 800, margin: "0 0 4px" }}>Seller dashboard</h1>
-        <p style={{ color: "#77715f", fontSize: 14, margin: 0 }}>Logged in as {auth.user.email}</p>
+      <div style={{ marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 800, margin: "0 0 4px" }}>Seller dashboard</h1>
+          <p style={{ color: "#77715f", fontSize: 14, margin: 0 }}>Logged in as {auth.user.email}</p>
+        </div>
+        {myStores.length > 0 && (
+          <select value={activeStoreId || ""} onChange={(e) => setActiveStoreId(e.target.value)}
+            style={{ padding: "9px 12px", borderRadius: 8, border: "1px solid #E4DFD0", fontSize: 13.5, fontWeight: 600 }}>
+            {myStores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        )}
       </div>
 
-      {myStores.length === 0 ? (
-        <div style={{ background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 18, maxWidth: 420 }}>
-          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Create your store</div>
-          <div style={{ fontSize: 12.5, color: "#8a8471", marginBottom: 12 }}>You don't have a store yet on this account — create one to start listing products.</div>
-          <form onSubmit={createStore} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <input placeholder="Store name" value={storeForm.name} onChange={(e) => setStoreForm({ ...storeForm, name: e.target.value })} style={inputStyle} required />
-            <input placeholder="Business reg. number (optional)" value={storeForm.businessRegNumber} onChange={(e) => setStoreForm({ ...storeForm, businessRegNumber: e.target.value })} style={inputStyle} />
-            <input placeholder="M-Pesa number for payouts" value={storeForm.payoutAccount} onChange={(e) => setStoreForm({ ...storeForm, payoutAccount: e.target.value })} style={inputStyle} />
-            <button type="submit" disabled={loading} style={{ padding: "10px 0", borderRadius: 8, border: "none", background: INK, color: "#fff", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>
-              {loading ? "Creating..." : "Create store"}
-            </button>
-          </form>
+      {!storesLoaded ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#9a9484", fontSize: 14, padding: 40, justifyContent: "center" }}>
+          <Loader2 size={16} className="spin" /> Loading your stores...
         </div>
       ) : (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 24 }}>
-            <StatCard label="Store" value={myStores.find((s) => s.id === activeStoreId)?.name} sub="Active store" icon={Store} />
-            <StatCard label="Pending in escrow" value={money(pendingEarnings)} sub="Released after delivery" icon={Clock} />
-            <StatCard label="Paid out" value={money(releasedEarnings)} sub="After 10% commission" icon={TrendingUp} />
+          <div style={{ background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 18, maxWidth: 420, marginBottom: 24 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{myStores.length > 0 ? "Create another store" : "Create your store"}</div>
+            <div style={{ fontSize: 12.5, color: "#8a8471", marginBottom: 12 }}>
+              {myStores.length > 0 ? "You can run more than one store on this account." : "You don't have a store yet — create one to start listing products."}
+            </div>
+            <form onSubmit={createStore} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <input placeholder="Store name" value={storeForm.name} onChange={(e) => setStoreForm({ ...storeForm, name: e.target.value })} style={inputStyle} required />
+              <input placeholder="Business reg. number (optional)" value={storeForm.businessRegNumber} onChange={(e) => setStoreForm({ ...storeForm, businessRegNumber: e.target.value })} style={inputStyle} />
+              <input placeholder="M-Pesa number for payouts" value={storeForm.payoutAccount} onChange={(e) => setStoreForm({ ...storeForm, payoutAccount: e.target.value })} style={inputStyle} />
+              <button type="submit" disabled={loading} style={{ padding: "10px 0", borderRadius: 8, border: "none", background: INK, color: "#fff", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>
+                {loading ? "Creating..." : "Create store"}
+              </button>
+            </form>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1.4fr", gap: 20, alignItems: "flex-start" }}>
-            <div style={{ background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 18 }}>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>List a new product</div>
-              <form onSubmit={addProduct} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <input placeholder="Product name" value={productForm.name} onChange={(e) => setProductForm({ ...productForm, name: e.target.value })} style={inputStyle} />
-                <input placeholder="Category" value={productForm.category} onChange={(e) => setProductForm({ ...productForm, category: e.target.value })} style={inputStyle} />
-                <textarea placeholder="Description" value={productForm.description} onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
-                  style={{ ...inputStyle, minHeight: 60, resize: "vertical", fontFamily: "inherit" }} />
-                <input placeholder="Image URL (e.g. from a photo hosting link)" value={productForm.imageUrl} onChange={(e) => setProductForm({ ...productForm, imageUrl: e.target.value })} style={inputStyle} />
-                <div style={{ display: "flex", gap: 8 }}>
-                  <input placeholder="Price (KES)" type="number" value={productForm.price} onChange={(e) => setProductForm({ ...productForm, price: e.target.value })} style={inputStyle} />
-                  <input placeholder="Stock qty" type="number" value={productForm.stock} onChange={(e) => setProductForm({ ...productForm, stock: e.target.value })} style={inputStyle} />
-                </div>
-                <button type="submit" style={{ padding: "10px 0", borderRadius: 8, border: "none", background: INK, color: "#fff", fontWeight: 700, fontSize: 13.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                  <Plus size={15} /> Add to my store
-                </button>
-              </form>
-              <div style={{ fontWeight: 700, fontSize: 15, margin: "22px 0 10px" }}>Your listings ({products.length})</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 200, overflowY: "auto" }}>
-                {products.map((p) => (
-                  <div key={p.id} style={{ padding: "8px 10px", background: "#FAF9F5", borderRadius: 7, fontSize: 13 }}>
-                    <b>{p.name}</b> — {money(p.price)} · {p.stock} in stock
+
+          {myStores.length > 0 && (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 24 }}>
+                <StatCard label="Active store" value={activeStore?.name} sub={activeStore?.verified ? "Verified" : "Unverified"} icon={Store} />
+                <StatCard label="Pending in escrow" value={money(pendingEarnings)} sub="Released after delivery" icon={Clock} />
+                <StatCard label="Paid out" value={money(releasedEarnings)} sub="After 10% commission" icon={TrendingUp} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1.4fr", gap: 20, alignItems: "flex-start" }}>
+                <div style={{ background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 18 }}>
+                  <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>List a new product</div>
+                  <form onSubmit={addProduct} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    <input placeholder="Product name" value={productForm.name} onChange={(e) => setProductForm({ ...productForm, name: e.target.value })} style={inputStyle} />
+                    <input placeholder="Category" value={productForm.category} onChange={(e) => setProductForm({ ...productForm, category: e.target.value })} style={inputStyle} />
+                    <textarea placeholder="Description" value={productForm.description} onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
+                      style={{ ...inputStyle, minHeight: 60, resize: "vertical", fontFamily: "inherit" }} />
+                    <input placeholder="Image URL" value={productForm.imageUrl} onChange={(e) => setProductForm({ ...productForm, imageUrl: e.target.value })} style={inputStyle} />
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <input placeholder="Price (KES)" type="number" value={productForm.price} onChange={(e) => setProductForm({ ...productForm, price: e.target.value })} style={inputStyle} />
+                      <input placeholder="Stock qty" type="number" value={productForm.stock} onChange={(e) => setProductForm({ ...productForm, stock: e.target.value })} style={inputStyle} />
+                    </div>
+                    <button type="submit" style={{ padding: "10px 0", borderRadius: 8, border: "none", background: INK, color: "#fff", fontWeight: 700, fontSize: 13.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                      <Plus size={15} /> Add to my store
+                    </button>
+                  </form>
+                  <div style={{ fontWeight: 700, fontSize: 15, margin: "22px 0 10px" }}>Your listings ({products.length})</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 320, overflowY: "auto" }}>
+                    {products.map((p) => (
+                      editingId === p.id ? (
+                        <div key={p.id} style={{ padding: 10, background: "#FAF9F5", borderRadius: 7, display: "flex", flexDirection: "column", gap: 6 }}>
+                          <input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} style={{ ...inputStyle, fontSize: 12.5 }} />
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <input type="number" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} style={{ ...inputStyle, fontSize: 12.5 }} />
+                            <input type="number" value={editForm.stock} onChange={(e) => setEditForm({ ...editForm, stock: e.target.value })} style={{ ...inputStyle, fontSize: 12.5 }} />
+                          </div>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <button onClick={() => saveEdit(p.id)} style={{ flex: 1, padding: "6px 0", borderRadius: 6, border: "none", background: GOLD, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Save</button>
+                            <button onClick={() => setEditingId(null)} style={{ flex: 1, padding: "6px 0", borderRadius: 6, border: "1px solid #E4DFD0", background: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div key={p.id} style={{ padding: "8px 10px", background: "#FAF9F5", borderRadius: 7, fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                          <div>
+                            <b>{p.name}</b> — {money(p.price)} · {p.stock} in stock
+                            {p.status !== "active" && <span style={{ marginLeft: 6, fontSize: 10.5, color: "#9C740F", background: "#FBF1DA", padding: "2px 6px", borderRadius: 10 }}>{p.status}</span>}
+                          </div>
+                          <button onClick={() => startEdit(p)} style={{ background: "none", border: "none", color: GOLD_DARK, fontSize: 12, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>Edit</button>
+                        </div>
+                      )
+                    ))}
+                    {products.length === 0 && <div style={{ fontSize: 13, color: "#9a9484" }}>No products listed yet in this store.</div>}
                   </div>
-                ))}
-                {products.length === 0 && <div style={{ fontSize: 13, color: "#9a9484" }}>No products listed yet this session.</div>}
+                </div>
+                <div style={{ background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 18 }}>
+                  <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Orders for your store</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {orders.map((o) => <OrderRow key={o.id} order={o} />)}
+                    {orders.length === 0 && <div style={{ fontSize: 13, color: "#9a9484" }}>No orders yet for this store.</div>}
+                  </div>
+                </div>
               </div>
-            </div>
-            <div style={{ background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 18 }}>
-              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Orders for your store</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {orders.map((o) => <OrderRow key={o.id} order={o} />)}
-                {orders.length === 0 && <div style={{ fontSize: 13, color: "#9a9484" }}>No orders yet for this store.</div>}
-              </div>
-            </div>
-          </div>
+            </>
+          )}
         </>
       )}
     </div>
