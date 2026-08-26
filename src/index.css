@@ -1,4 +1,52 @@
 * { box-sizing: border-box; }
 body { margin: 0; }
+
 .spin { animation: spin 0.8s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-in-up {
+  animation: fadeInUp 0.5s ease-out both;
+}
+
+.product-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.product-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 24px rgba(20, 18, 12, 0.08);
+  border-color: #E4C57A !important;
+}
+
+@keyframes floatBlob {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(14px, -10px) scale(1.05); }
+}
+.hero-blob {
+  animation: floatBlob 7s ease-in-out infinite;
+}
+.hero-blob-2 {
+  animation: floatBlob 9s ease-in-out infinite reverse;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.hero-shimmer-text {
+  background: linear-gradient(90deg, #FFF6DD 0%, #FFE8A3 25%, #FFF6DD 50%, #FFE8A3 75%, #FFF6DD 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-in-up, .hero-blob, .hero-blob-2, .hero-shimmer-text, .spin {
+    animation: none !important;
+  }
+}

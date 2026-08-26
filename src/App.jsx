@@ -103,6 +103,8 @@ export default function SavivahApp() {
         )}
       </div>
 
+      <Footer />
+
       {showCart && (
         <CartDrawer cart={cart} onClose={() => setShowCart(false)} updateQty={updateQty} removeFromCart={removeFromCart}
           total={cartTotal} auth={auth} apiFetch={apiFetch} notify={notify}
@@ -154,13 +156,63 @@ function ThankYouModal({ onClose }) {
 
 function Logo() {
   return (
-    <div style={{ display: "flex", alignItems: "baseline", gap: 2 }}>
-      <span style={{ fontSize: 26, fontWeight: 800, letterSpacing: 0.5,
-        background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DARK})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-        SAVIVAH
-      </span>
-      <span style={{ fontSize: 11, color: "#7A7669", fontWeight: 600, marginLeft: 4 }}>marketplace</span>
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <img src="/savivah-mark-square.png" alt="" width="34" height="34" style={{ display: "block" }} />
+      <div style={{ display: "flex", alignItems: "baseline", gap: 2 }}>
+        <span style={{ fontSize: 26, fontWeight: 800, letterSpacing: 0.5,
+          background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DARK})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+          SAVIVAH
+        </span>
+        <span style={{ fontSize: 11, color: "#7A7669", fontWeight: 600, marginLeft: 4 }}>marketplace</span>
+      </div>
     </div>
+  );
+}
+
+function Footer() {
+  const year = new Date().getFullYear();
+  return (
+    <footer style={{ background: INK, color: "#D8D3C6", marginTop: 40 }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "40px 20px 28px", display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 28 }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <img src="/savivah-mark-square.png" alt="" width="28" height="28" />
+            <span style={{ fontSize: 17, fontWeight: 800, color: "#fff" }}>SAVIVAH</span>
+          </div>
+          <p style={{ fontSize: 12.5, lineHeight: 1.6, color: "#A8A399", margin: 0, maxWidth: 260 }}>
+            A multi-vendor marketplace based in Kenya. Every payment is held in escrow until delivery is confirmed.
+          </p>
+        </div>
+        <div>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: "#fff", marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>Marketplace</div>
+          <FooterLink label="Browse products" />
+          <FooterLink label="Become a seller" />
+          <FooterLink label="How escrow works" />
+        </div>
+        <div>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: "#fff", marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>Support</div>
+          <FooterLink label="Contact us" />
+          <FooterLink label="Delivery with Fargo" />
+          <FooterLink label="Payments via Pesapal" />
+        </div>
+        <div>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: "#fff", marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>Company</div>
+          <div style={{ fontSize: 12.5, color: "#A8A399", lineHeight: 1.8 }}>
+            Savivah Technologies Limited<br />Nairobi, Kenya
+          </div>
+        </div>
+      </div>
+      <div style={{ borderTop: "1px solid #2E2A22", padding: "16px 20px", textAlign: "center", fontSize: 11.5, color: "#8A8577" }}>
+        © {year} Savivah Technologies Limited. All rights reserved.
+      </div>
+    </footer>
+  );
+}
+
+function FooterLink({ label }) {
+  return (
+    <div style={{ fontSize: 12.5, color: "#A8A399", marginBottom: 8, cursor: "default" }}>{label}</div>
   );
 }
 
@@ -335,15 +387,36 @@ function AuthModal({ onClose, onAuthed }) {
   );
 }
 
+function Hero() {
+  return (
+    <div style={{
+      position: "relative", overflow: "hidden", borderRadius: 16, padding: "36px 28px",
+      background: `linear-gradient(135deg, ${INK} 0%, #2A2620 100%)`, marginBottom: 24,
+    }}>
+      <div className="hero-blob" style={{
+        position: "absolute", top: -40, right: -30, width: 160, height: 160, borderRadius: "50%",
+        background: `radial-gradient(circle, ${GOLD}55 0%, transparent 70%)`, pointerEvents: "none",
+      }} />
+      <div className="hero-blob-2" style={{
+        position: "absolute", bottom: -50, left: 60, width: 140, height: 140, borderRadius: "50%",
+        background: `radial-gradient(circle, ${GOLD}33 0%, transparent 70%)`, pointerEvents: "none",
+      }} />
+      <div style={{ position: "relative" }}>
+        <h1 className="hero-shimmer-text" style={{ fontSize: 26, fontWeight: 800, margin: "0 0 8px" }}>
+          Shop Kenya's trusted marketplace
+        </h1>
+        <p style={{ color: "#D8D3C6", fontSize: 14, margin: 0, maxWidth: 480, lineHeight: 1.5 }}>
+          Every store here is independently owned. Your payment is held safely in escrow until delivery is confirmed — so you shop with confidence.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function CustomerView({ products, loading, search, setSearch, addToCart }) {
   return (
     <div>
-      <div style={{ margin: "4px 0 22px" }}>
-        <h1 style={{ fontSize: 24, fontWeight: 800, margin: "0 0 4px" }}>Shop the marketplace</h1>
-        <p style={{ color: "#77715f", fontSize: 14, margin: 0 }}>
-          Live data from the Savivah API — every store here is independently owned. Payment is held in escrow until delivery is confirmed.
-        </p>
-      </div>
+      <Hero />
       <div style={{ position: "relative", maxWidth: 360, marginBottom: 20 }}>
         <Search size={16} style={{ position: "absolute", left: 12, top: 12, color: "#9a9484" }} />
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search products..."
@@ -355,8 +428,8 @@ function CustomerView({ products, loading, search, setSearch, addToCart }) {
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 16 }}>
-          {products.map((p) => (
-            <div key={p.id} style={{ background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+          {products.map((p, i) => (
+            <div key={p.id} className="product-card fade-in-up" style={{ animationDelay: `${Math.min(i, 8) * 0.05}s`, background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
               <div style={{ height: 110, borderRadius: 8, background: "#F4F1E8", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
                 {p.image_url ? (
                   <img src={p.image_url} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }}
