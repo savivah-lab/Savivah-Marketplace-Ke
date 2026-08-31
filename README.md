@@ -32,6 +32,23 @@ The "Continue with Google" button only appears if a Client ID is configured.
 Any email ending in `@savivah.co.ke` — whether signing up via Google or
 email/password — automatically becomes an admin account, on both sides.
 
+## Recent architecture changes (Python backend migration)
+
+- **Admin login is now completely separate** from customer/seller login —
+  see `src/api/adminAuth.js`. It calls `/api/admin/auth/login` (not
+  `/api/auth/login`), stores its own token pair (`accessToken` +
+  `refreshToken`, held in React state as `adminAuth`, never mixed with the
+  regular `auth` state), and automatically refreshes the access token on a
+  401 since admin tokens are short-lived (10 minutes) by design. There is
+  no more "log in with a @savivah.co.ke email" trick — that was a real
+  security gap (no email-ownership check) and has been removed entirely.
+  Admin accounts are now created directly by the team via a backend script.
+- **The marketplace is paginated**, not a single full-list fetch — see
+  `src/hooks/useProductPagination.js`. It requests 24 products at a time
+  and exposes a `loadMore()` you call from a "Load more" button; changing
+  the search box resets back to page one. This matches the backend's
+  bounded-page contract (`GET /api/products?limit=24&cursor=...`).
+
 ## Deploy to Render (static site)
 
 Same pattern as the backend: push this folder to its own GitHub repo, then in

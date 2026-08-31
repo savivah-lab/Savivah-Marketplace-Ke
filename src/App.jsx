@@ -2,8 +2,10 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   ShoppingCart, Store, ShieldCheck, Package, Plus, Trash2, X,
   CheckCircle2, Clock, Truck, RotateCcw, TrendingUp, LayoutGrid,
-  Wallet, Search, LogIn, LogOut, UserPlus, Loader2, AlertTriangle
+  Wallet, Search, LogIn, LogOut, UserPlus, Loader2, AlertTriangle, ChevronDown
 } from "lucide-react";
+import { useProductPagination } from "./hooks/useProductPagination";
+import { adminLogin, createAdminApiClient } from "./api/adminAuth";
 
 const GOLD = "#C9971C";
 const GOLD_DARK = "#9C740F";
@@ -25,17 +27,18 @@ const STATUS_META = {
 };
 
 export default function SavivahApp() {
-  const [auth, setAuth] = useState(null); // { token, user }
+  const [auth, setAuth] = useState(null); // { token, user } — customer/seller only, never admin
+  const [adminAuth, setAdminAuth] = useState(null); // { accessToken, refreshToken, admin } — entirely separate from `auth`
   const [role, setRole] = useState("customer");
   const [cart, setCart] = useState([]);
   const [showCart, setShowCart] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
   const [showThankYou, setShowThankYou] = useState(false);
   const [search, setSearch] = useState("");
-  const [products, setProducts] = useState([]);
-  const [loadingProducts, setLoadingProducts] = useState(true);
   const [toast, setToast] = useState(null);
-  const [apiDown, setApiDown] = useState(false);
+
+  const { items: products, loading: loadingProducts, error: productsError, hasMore, loadMore } = useProductPagination(search);
+  const apiDown = Boolean(productsError);
 
   const notify = useCallback((msg) => {
     setToast(msg);
@@ -48,20 +51,20 @@ export default function SavivahApp() {
     const res = await fetch(`${API_BASE}${path}`, { ...opts, headers });
     let data;
     try { data = await res.json(); } catch { data = null; }
-    if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`);
+    if (!res.ok) throw new Error(data?.error || data?.detail || `Request failed (${res.status})`);
     return data;
   }, [auth]);
 
-  const loadProducts = useCallback(() => {
-    setLoadingProducts(true);
-    fetch(`${API_BASE}/products${search ? `?search=${encodeURIComponent(search)}` : ""}`)
-      .then((r) => r.json())
-      .then((data) => { setProducts(Array.isArray(data) ? data : []); setApiDown(false); })
-      .catch(() => setApiDown(true))
-      .finally(() => setLoadingProducts(false));
-  }, [search]);
-
-  useEffect(() => { loadProducts(); }, [loadProducts]);
+  // Admin calls go through a dedicated client that knows how to refresh a
+  // short-lived admin access token automatically — see api/adminAuth.js.
+  const adminApiFetch = useCallback(
+    createAdminApiClient(
+      () => adminAuth,
+      (refreshed) => setAdminAuth((prev) => ({ ...prev, ...refreshed })),
+      () => { setAdminAuth(null); notify("Admin session expired — please log in again"); }
+    ),
+    [adminAuth]
+  );
 
   const addToCart = (product) => {
     setCart((c) => {
@@ -93,13 +96,13 @@ export default function SavivahApp() {
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px 60px" }}>
         {role === "customer" && (
           <CustomerView products={products} loading={loadingProducts} search={search} setSearch={setSearch}
-            addToCart={addToCart} />
+            addToCart={addToCart} hasMore={hasMore} loadMore={loadMore} />
         )}
         {role === "seller" && (
           <SellerView auth={auth} apiFetch={apiFetch} notify={notify} requireLogin={() => setShowAuth(true)} />
         )}
         {role === "admin" && (
-          <AdminView auth={auth} apiFetch={apiFetch} notify={notify} requireLogin={() => setShowAuth(true)} />
+          <AdminView adminAuth={adminAuth} setAdminAuth={setAdminAuth} adminApiFetch={adminApiFetch} notify={notify} />
         )}
       </div>
 
@@ -109,7 +112,7 @@ export default function SavivahApp() {
         <CartDrawer cart={cart} onClose={() => setShowCart(false)} updateQty={updateQty} removeFromCart={removeFromCart}
           total={cartTotal} auth={auth} apiFetch={apiFetch} notify={notify}
           requireLogin={() => { setShowCart(false); setShowAuth(true); }}
-          onOrderPlaced={() => { setCart([]); setShowCart(false); loadProducts(); setShowThankYou(true); }} />
+          onOrderPlaced={() => { setCart([]); setShowCart(false); setShowThankYou(true); }} />
       )}
 
       {showThankYou && <ThankYouModal onClose={() => setShowThankYou(false)} />}
@@ -413,7 +416,7 @@ function Hero() {
   );
 }
 
-function CustomerView({ products, loading, search, setSearch, addToCart }) {
+function CustomerView({ products, loading, search, setSearch, addToCart, hasMore, loadMore }) {
   return (
     <div>
       <Hero />
@@ -422,43 +425,55 @@ function CustomerView({ products, loading, search, setSearch, addToCart }) {
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search products..."
           style={{ width: "100%", padding: "10px 12px 10px 34px", borderRadius: 8, border: "1px solid #E4DFD0", fontSize: 14, boxSizing: "border-box" }} />
       </div>
-      {loading ? (
+      {loading && products.length === 0 ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#9a9484", fontSize: 14, padding: 40, justifyContent: "center" }}>
           <Loader2 size={16} className="spin" /> Loading products...
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 16 }}>
-          {products.map((p, i) => (
-            <div key={p.id} className="product-card fade-in-up" style={{ animationDelay: `${Math.min(i, 8) * 0.05}s`, background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ height: 110, borderRadius: 8, background: "#F4F1E8", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-                {p.image_url ? (
-                  <img src={p.image_url} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                    onError={(e) => { e.target.style.display = "none"; }} />
-                ) : (
-                  <Package size={34} color="#C9C2AB" />
-                )}
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 16 }}>
+            {products.map((p, i) => (
+              <div key={p.id} className="product-card fade-in-up" style={{ animationDelay: `${Math.min(i, 8) * 0.05}s`, background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ height: 110, borderRadius: 8, background: "#F4F1E8", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                  {p.image_url ? (
+                    <img src={p.image_url} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      onError={(e) => { e.target.style.display = "none"; }} />
+                  ) : (
+                    <Package size={34} color="#C9C2AB" />
+                  )}
+                </div>
+                <div style={{ fontSize: 11, color: GOLD_DARK, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+                  <Store size={11} /> {p.store_name}
+                </div>
+                <div style={{ fontWeight: 700, fontSize: 14.5, lineHeight: 1.3 }}>{p.name}</div>
+                <div style={{ fontSize: 12, color: "#8a8471" }}>{p.stock} in stock</div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
+                  <span style={{ fontWeight: 800, fontSize: 16 }}>{money(p.price)}</span>
+                  <button onClick={() => addToCart(p)} disabled={p.stock === 0} style={{
+                    display: "flex", alignItems: "center", gap: 4, padding: "7px 12px", borderRadius: 7, border: "none",
+                    cursor: p.stock ? "pointer" : "not-allowed", background: p.stock ? INK : "#D9D4C4", color: "#fff", fontSize: 12.5, fontWeight: 600 }}>
+                    <Plus size={13} /> Add
+                  </button>
+                </div>
               </div>
-              <div style={{ fontSize: 11, color: GOLD_DARK, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
-                <Store size={11} /> {p.store_name}
+            ))}
+            {products.length === 0 && (
+              <div style={{ color: "#9a9484", fontSize: 14, gridColumn: "1/-1", padding: 40, textAlign: "center" }}>
+                No products yet — list one from the Seller dashboard tab.
               </div>
-              <div style={{ fontWeight: 700, fontSize: 14.5, lineHeight: 1.3 }}>{p.name}</div>
-              <div style={{ fontSize: 12, color: "#8a8471" }}>{p.stock} in stock</div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
-                <span style={{ fontWeight: 800, fontSize: 16 }}>{money(p.price)}</span>
-                <button onClick={() => addToCart(p)} disabled={p.stock === 0} style={{
-                  display: "flex", alignItems: "center", gap: 4, padding: "7px 12px", borderRadius: 7, border: "none",
-                  cursor: p.stock ? "pointer" : "not-allowed", background: p.stock ? INK : "#D9D4C4", color: "#fff", fontSize: 12.5, fontWeight: 600 }}>
-                  <Plus size={13} /> Add
-                </button>
-              </div>
-            </div>
-          ))}
-          {products.length === 0 && (
-            <div style={{ color: "#9a9484", fontSize: 14, gridColumn: "1/-1", padding: 40, textAlign: "center" }}>
-              No products yet — list one from the Seller dashboard tab.
+            )}
+          </div>
+          {hasMore && (
+            <div style={{ textAlign: "center", marginTop: 24 }}>
+              <button onClick={loadMore} disabled={loading} style={{
+                display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 22px", borderRadius: 8,
+                border: `1px solid ${GOLD}`, background: "#fff", color: INK, fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>
+                {loading ? <Loader2 size={14} className="spin" /> : <ChevronDown size={14} />}
+                Load more
+              </button>
             </div>
           )}
-        </div>
+        </>
       )}
     </div>
   );
@@ -754,7 +769,54 @@ function SellerView({ auth, apiFetch, notify, requireLogin }) {
   );
 }
 
-function AdminView({ auth, apiFetch, notify, requireLogin }) {
+function AdminLoginForm({ onAuthed }) {
+  const [form, setForm] = useState({ email: "", password: "", totpCode: "" });
+  const [needsTotp, setNeedsTotp] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setLoading(true); setError("");
+    try {
+      const data = await adminLogin(form.email, form.password, form.totpCode || undefined);
+      onAuthed(data);
+    } catch (e) {
+      if (e.message.toLowerCase().includes("2fa")) setNeedsTotp(true);
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ maxWidth: 380, margin: "40px auto", background: "#fff", border: "1px solid #ECE8DD", borderRadius: 14, padding: 28 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+        <div style={{ width: 40, height: 40, borderRadius: "50%", background: "#F4F1E8", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <ShieldCheck size={19} color={GOLD_DARK} />
+        </div>
+        <div style={{ fontWeight: 800, fontSize: 17 }}>Admin sign-in</div>
+      </div>
+      <p style={{ fontSize: 12.5, color: "#8a8471", marginBottom: 18 }}>
+        This is a separate login from the customer/seller account — admin accounts are created directly by the team, not through public registration.
+      </p>
+      <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <input type="email" placeholder="Admin email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} style={inputStyle} required />
+        <input type="password" placeholder="Password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} style={inputStyle} required />
+        {needsTotp && (
+          <input placeholder="6-digit authenticator code" value={form.totpCode} onChange={(e) => setForm({ ...form, totpCode: e.target.value })} style={inputStyle} />
+        )}
+        {error && <div style={{ fontSize: 12.5, color: "#B3261E" }}>{error}</div>}
+        <button type="submit" disabled={loading} style={{ padding: "11px 0", borderRadius: 8, border: "none", background: INK,
+          color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+          {loading ? <Loader2 size={15} className="spin" /> : <LogIn size={15} />} Sign in
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function AdminView({ adminAuth, setAdminAuth, adminApiFetch, notify }) {
   const [tab, setTab] = useState("orders"); // orders | sellers | payouts
   const [orders, setOrders] = useState([]);
   const [sellers, setSellers] = useState([]);
@@ -766,28 +828,25 @@ function AdminView({ auth, apiFetch, notify, requireLogin }) {
     setLoading(true);
     try {
       const [o, s, sellerList, payoutList] = await Promise.all([
-        apiFetch("/admin/orders"), apiFetch("/admin/stats"), apiFetch("/admin/sellers"), apiFetch("/admin/payouts"),
+        adminApiFetch("/admin/orders"), adminApiFetch("/admin/stats"),
+        adminApiFetch("/admin/sellers"), adminApiFetch("/admin/payouts"),
       ]);
       setOrders(o); setStats(s); setSellers(sellerList); setPayouts(payoutList);
     } catch (e) { notify(e.message); } finally { setLoading(false); }
-  }, [apiFetch, notify]);
+  }, [adminApiFetch, notify]);
 
-  useEffect(() => { if (auth?.user.role === "admin") load(); }, [auth, load]);
+  useEffect(() => { if (adminAuth) load(); }, [adminAuth, load]);
 
   const dispatchPayout = async (payoutId) => {
     try {
-      await apiFetch(`/admin/payouts/${payoutId}/mark-sent`, { method: "POST" });
+      await adminApiFetch(`/admin/payouts/${payoutId}/mark-sent`, { method: "POST" });
       notify("Payout marked as sent");
       load();
     } catch (e) { notify(e.message); }
   };
 
-  if (!auth || auth.user.role !== "admin") {
-    return (
-      <EmptyState icon={ShieldCheck} title="Admin access required"
-        message="Log in with a @savivah.co.ke email — those accounts are automatically given admin access on registration."
-        actionLabel="Log in" onAction={requireLogin} />
-    );
+  if (!adminAuth) {
+    return <AdminLoginForm onAuthed={(data) => { setAdminAuth(data); notify(`Welcome, ${data.admin.fullName}`); }} />;
   }
 
   const tabs = [
@@ -798,9 +857,16 @@ function AdminView({ auth, apiFetch, notify, requireLogin }) {
 
   return (
     <div>
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 800, margin: "0 0 4px" }}>Admin panel</h1>
-        <p style={{ color: "#77715f", fontSize: 14, margin: 0 }}>Platform-wide orders, sellers, and payouts.</p>
+      <div style={{ marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 800, margin: "0 0 4px" }}>Admin panel</h1>
+          <p style={{ color: "#77715f", fontSize: 14, margin: 0 }}>Signed in as {adminAuth.admin.email}</p>
+        </div>
+        <button onClick={() => { setAdminAuth(null); notify("Logged out of admin"); }} style={{
+          display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8,
+          border: "1px solid #E4DFD0", background: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+          <LogOut size={14} /> Log out
+        </button>
       </div>
       {loading ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#9a9484", fontSize: 14, padding: 40, justifyContent: "center" }}>
