@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 
-const API_BASE = "https://savivah-backend.onrender.com/api";
+const API_BASE = "https://savivah-backend-py.onrender.com/api";
 const PAGE_SIZE = 24;
 
 /**
@@ -27,11 +27,18 @@ export function useProductPagination(search) {
 
       const res = await fetch(`${API_BASE}/products?${params}`);
       if (!res.ok) throw new Error("Could not load products");
-      const page = await res.json(); // { items, next_cursor }
+      const page = await res.json();
 
-      setItems((prev) => (afterCursor ? [...prev, ...page.items] : page.items));
-      setCursor(page.next_cursor);
-      setHasMore(Boolean(page.next_cursor));
+      // Defensive: if the response isn't the paginated { items, next_cursor }
+      // shape we expect (e.g. an old/mismatched backend), fall back to an
+      // empty page rather than setting state to `undefined` — that would
+      // otherwise crash the product grid's .map() a render later.
+      const newItems = Array.isArray(page?.items) ? page.items : Array.isArray(page) ? page : [];
+      const nextCursor = page?.next_cursor ?? null;
+
+      setItems((prev) => (afterCursor ? [...prev, ...newItems] : newItems));
+      setCursor(nextCursor);
+      setHasMore(Boolean(nextCursor));
     } catch (e) {
       setError(e.message);
     } finally {
