@@ -9,7 +9,7 @@ import { useProductPagination } from "./hooks/useProductPagination";
 const GOLD = "#C9971C";
 const GOLD_DARK = "#9C740F";
 const INK = "#161513";
-const API_BASE = "https://savivah-backend.onrender.com/api";
+const API_BASE = "https://savivah-backend-py.onrender.com/api";
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
 
 function money(n) {
