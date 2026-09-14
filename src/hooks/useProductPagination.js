@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 
-const API_BASE = "https://savivah-backend-py.onrender.com/api";
+const API_BASE = "https://savivah-backend-firestore.onrender.com/api";
 const PAGE_SIZE = 24;
 
 /**
