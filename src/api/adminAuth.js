@@ -5,7 +5,7 @@
  * This mirrors the backend's ADMIN_JWT_SECRET separation: an admin session
  * here can never be produced by, or confused with, a customer/seller login.
  */
-const API_BASE = "https://savivah-backend.onrender.com/api";
+const API_BASE = "https://savivah-backend-firestore.onrender.com/api";
 
 export async function adminLogin(email, password, totpCode) {
   const res = await fetch(`${API_BASE}/admin/auth/login`, {
