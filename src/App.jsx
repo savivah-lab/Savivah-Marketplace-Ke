@@ -26,8 +26,22 @@ const STATUS_META = {
 };
 
 export default function SavivahApp() {
-  const [auth, setAuth] = useState(null); // { token, user } — customer/seller only; admin lives in a separate app entirely
-  const [role, setRole] = useState("customer");
+  const [auth, setAuth] = useState(() => {
+    try {
+      const saved = localStorage.getItem("savivah_auth");
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  }); // { token, user } — customer/seller only; admin lives in a separate app entirely
+
+  const [role, setRole] = useState(() => {
+    try {
+      return localStorage.getItem("savivah_role") || "customer";
+    } catch {
+      return "customer";
+    }
+  });
   const [cart, setCart] = useState([]);
   const [showCart, setShowCart] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
@@ -37,6 +51,18 @@ export default function SavivahApp() {
 
   const { items: products, loading: loadingProducts, error: productsError, hasMore, loadMore } = useProductPagination(search);
   const apiDown = Boolean(productsError);
+
+  useEffect(() => {
+    if (auth) {
+      localStorage.setItem("savivah_auth", JSON.stringify(auth));
+    } else {
+      localStorage.removeItem("savivah_auth");
+    }
+  }, [auth]);
+
+  useEffect(() => {
+    localStorage.setItem("savivah_role", role);
+  }, [role]);
 
   const notify = useCallback((msg) => {
     setToast(msg);
@@ -66,7 +92,13 @@ export default function SavivahApp() {
   const cartTotal = cart.reduce((s, i) => s + Number(i.price) * i.qty, 0);
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
 
-  const logout = () => { setAuth(null); notify("Logged out"); };
+  const logout = () => {
+    localStorage.removeItem("savivah_auth");
+    localStorage.removeItem("savivah_role");
+    setAuth(null);
+    setRole("customer");
+    notify("Logged out");
+  };
 
   return (
     <div style={{ fontFamily: "'Segoe UI', Arial, sans-serif", background: "#FAF9F5", minHeight: "100vh", color: INK }}>
@@ -102,7 +134,15 @@ export default function SavivahApp() {
       {showThankYou && <ThankYouModal onClose={() => setShowThankYou(false)} />}
 
       {showAuth && (
-        <AuthModal onClose={() => setShowAuth(false)} onAuthed={(a) => { setAuth(a); setShowAuth(false); notify(`Welcome, ${a.user.fullName || a.user.email}`); }} />
+        <AuthModal
+          onClose={() => setShowAuth(false)}
+          onAuthed={(a) => {
+            setAuth(a);
+            setRole(a.user.role === "seller" ? "seller" : "customer");
+            setShowAuth(false);
+            notify(`Welcome, ${a.user.fullName || a.user.email}`);
+          }}
+        />
       )}
     </div>
   );
