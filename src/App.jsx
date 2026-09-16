@@ -522,6 +522,21 @@ function CustomerView({ products, loading, search, setSearch, addToCart, hasMore
                     </div>
                   )}
 
+                  {/* Product description */}
+                  <div style={{
+                    fontSize: 11.5,
+                    color: "#6F6A5E",
+                    lineHeight: 1.45,
+                    marginBottom: 9,
+                    minHeight: 33,
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
+                  }}>
+                    {p.description || "No description provided."}
+                  </div>
+
                   <div style={{ fontSize: 11.5, color: "#8a8471", marginBottom: 10 }}>
                     {Number(p.stock) > 0 ? `${p.stock} in stock` : "Out of stock"}
                   </div>
