@@ -524,17 +524,30 @@ function CustomerView({ products, loading, search, setSearch, addToCart, hasMore
 
                   {/* Product description */}
                   <div style={{
-                    fontSize: 11.5,
-                    color: "#6F6A5E",
-                    lineHeight: 1.45,
-                    marginBottom: 9,
-                    minHeight: 33,
-                    display: "-webkit-box",
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: "vertical",
-                    overflow: "hidden",
+                    marginBottom: 10,
+                    padding: "8px 9px",
+                    background: "#FAF9F5",
+                    borderRadius: 7,
+                    border: "1px solid #F0ECE2",
                   }}>
-                    {p.description || "No description provided."}
+                    <div style={{
+                      fontSize: 9.5,
+                      color: "#9A9484",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.35,
+                      marginBottom: 3,
+                    }}>
+                      Description
+                    </div>
+                    <div style={{
+                      fontSize: 11.5,
+                      color: "#5F5A50",
+                      lineHeight: 1.45,
+                      overflowWrap: "anywhere",
+                    }}>
+                      {p.description ? String(p.description) : "No description provided."}
+                    </div>
                   </div>
 
                   <div style={{ fontSize: 11.5, color: "#8a8471", marginBottom: 10 }}>
