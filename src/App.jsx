@@ -439,11 +439,42 @@ function Hero() {
   );
 }
 
+function ProductImage({ src, name }) {
+  const [failed, setFailed] = useState(!src);
+
+  return (
+    <div style={{
+      width: "100%",
+      aspectRatio: "4 / 3",
+      background: "#F4F1E8",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      overflow: "hidden",
+      position: "relative",
+    }}>
+      {failed ? (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 7, color: "#B8B09D" }}>
+          <Package size={42} strokeWidth={1.4} />
+          <span style={{ fontSize: 11.5, fontWeight: 600 }}>Image coming soon</span>
+        </div>
+      ) : (
+        <img
+          src={src}
+          alt={name || "Product"}
+          onError={() => setFailed(true)}
+          style={{ width: "100%", height: "100%", display: "block", objectFit: "cover", objectPosition: "center" }}
+        />
+      )}
+    </div>
+  );
+}
+
 function CustomerView({ products, loading, search, setSearch, addToCart, hasMore, loadMore }) {
   return (
     <div>
       <Hero />
-      <div style={{ position: "relative", maxWidth: 360, marginBottom: 20 }}>
+      <div style={{ position: "relative", maxWidth: 420, marginBottom: 20 }}>
         <Search size={16} style={{ position: "absolute", left: 12, top: 12, color: "#9a9484" }} />
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search products..."
           style={{ width: "100%", padding: "10px 12px 10px 34px", borderRadius: 8, border: "1px solid #E4DFD0", fontSize: 14, boxSizing: "border-box" }} />
@@ -454,29 +485,56 @@ function CustomerView({ products, loading, search, setSearch, addToCart, hasMore
         </div>
       ) : (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 16 }}>
             {products.map((p, i) => (
-              <div key={p.id} className="product-card fade-in-up" style={{ animationDelay: `${Math.min(i, 8) * 0.05}s`, background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ height: 110, borderRadius: 8, background: "#F4F1E8", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-                  {p.image_url ? (
-                    <img src={p.image_url} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                      onError={(e) => { e.target.style.display = "none"; }} />
-                  ) : (
-                    <Package size={34} color="#C9C2AB" />
+              <div key={p.id} className="product-card fade-in-up" style={{
+                animationDelay: `${Math.min(i, 8) * 0.05}s`,
+                background: "#fff",
+                border: "1px solid #ECE8DD",
+                borderRadius: 12,
+                overflow: "hidden",
+                display: "flex",
+                flexDirection: "column",
+                minWidth: 0,
+              }}>
+                <ProductImage src={p.image_url} name={p.name} />
+
+                <div style={{ padding: "12px 13px 13px", display: "flex", flexDirection: "column", flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, minHeight: 30 }}>
+                    <div style={{ width: 28, height: 28, borderRadius: "50%", background: "#F4F1E8", border: "1px solid #E8E1D1", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <Store size={13} color={GOLD_DARK} />
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 9.5, color: "#9a9484", lineHeight: 1.1 }}>Sold by</div>
+                      <div style={{ fontSize: 11.5, color: GOLD_DARK, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {p.store_name || "Savivah seller"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.35, minHeight: 38, marginBottom: 5 }}>
+                    {p.name || "Product name"}
+                  </div>
+
+                  {p.category && (
+                    <div style={{ fontSize: 10.5, color: "#77715f", marginBottom: 5, textTransform: "capitalize" }}>
+                      {p.category}
+                    </div>
                   )}
-                </div>
-                <div style={{ fontSize: 11, color: GOLD_DARK, fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
-                  <Store size={11} /> {p.store_name}
-                </div>
-                <div style={{ fontWeight: 700, fontSize: 14.5, lineHeight: 1.3 }}>{p.name}</div>
-                <div style={{ fontSize: 12, color: "#8a8471" }}>{p.stock} in stock</div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
-                  <span style={{ fontWeight: 800, fontSize: 16 }}>{money(p.price)}</span>
-                  <button onClick={() => addToCart(p)} disabled={p.stock === 0} style={{
-                    display: "flex", alignItems: "center", gap: 4, padding: "7px 12px", borderRadius: 7, border: "none",
-                    cursor: p.stock ? "pointer" : "not-allowed", background: p.stock ? INK : "#D9D4C4", color: "#fff", fontSize: 12.5, fontWeight: 600 }}>
-                    <Plus size={13} /> Add
-                  </button>
+
+                  <div style={{ fontSize: 11.5, color: "#8a8471", marginBottom: 10 }}>
+                    {Number(p.stock) > 0 ? `${p.stock} in stock` : "Out of stock"}
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: "auto" }}>
+                    <span style={{ fontWeight: 800, fontSize: 15.5 }}>{money(p.price)}</span>
+                    <button onClick={() => addToCart(p)} disabled={p.stock === 0} style={{
+                      display: "flex", alignItems: "center", gap: 4, padding: "7px 11px", borderRadius: 7, border: "none",
+                      cursor: p.stock ? "pointer" : "not-allowed", background: p.stock ? INK : "#D9D4C4", color: "#fff", fontSize: 12, fontWeight: 600, flexShrink: 0,
+                    }}>
+                      <Plus size={13} /> Add
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
