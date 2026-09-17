@@ -416,26 +416,245 @@ function AuthModal({ onClose, onAuthed }) {
 }
 
 function Hero() {
+  const slides = [
+    {
+      image: "/hero-1.jpg",
+      title: "Shop Kenya's trusted marketplace",
+      text: "Every store here is independently owned. Your payment is held safely in escrow until delivery is confirmed — so you shop with confidence.",
+    },
+    {
+      image: "/hero-2.jpg",
+      title: "Discover great products",
+      text: "Find electronics, fashion, beauty, home essentials and more from sellers across Kenya.",
+    },
+    {
+      image: "/hero-3.jpg",
+      title: "Shop from independent sellers",
+      text: "Support local businesses while discovering products that fit your everyday needs.",
+    },
+    {
+      image: "/hero-4.jpg",
+      title: "Shop with confidence",
+      text: "Savivah helps make marketplace shopping simple, convenient and secure.",
+    },
+  ];
+
+  const [currentSlide, setCurrentSlide] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentSlide((current) => (current + 1) % slides.length);
+    }, 5000);
+
+    return () => clearInterval(timer);
+  }, [slides.length]);
+
+  const previousSlide = () => {
+    setCurrentSlide((current) =>
+      current === 0 ? slides.length - 1 : current - 1
+    );
+  };
+
+  const nextSlide = () => {
+    setCurrentSlide((current) =>
+      (current + 1) % slides.length
+    );
+  };
+
   return (
-    <div style={{
-      position: "relative", overflow: "hidden", borderRadius: 16, padding: "36px 28px",
-      background: `linear-gradient(135deg, ${INK} 0%, #2A2620 100%)`, marginBottom: 24,
-    }}>
-      <div className="hero-blob" style={{
-        position: "absolute", top: -40, right: -30, width: 160, height: 160, borderRadius: "50%",
-        background: `radial-gradient(circle, ${GOLD}55 0%, transparent 70%)`, pointerEvents: "none",
-      }} />
-      <div className="hero-blob-2" style={{
-        position: "absolute", bottom: -50, left: 60, width: 140, height: 140, borderRadius: "50%",
-        background: `radial-gradient(circle, ${GOLD}33 0%, transparent 70%)`, pointerEvents: "none",
-      }} />
-      <div style={{ position: "relative" }}>
-        <h1 className="hero-shimmer-text" style={{ fontSize: 26, fontWeight: 800, margin: "0 0 8px" }}>
-          Shop Kenya's trusted marketplace
-        </h1>
-        <p style={{ color: "#D8D3C6", fontSize: 14, margin: 0, maxWidth: 480, lineHeight: 1.5 }}>
-          Every store here is independently owned. Your payment is held safely in escrow until delivery is confirmed — so you shop with confidence.
-        </p>
+    <div
+      style={{
+        position: "relative",
+        overflow: "hidden",
+        borderRadius: 16,
+        height: 260,
+        marginBottom: 24,
+        background: INK,
+      }}
+    >
+      {/* Background images */}
+      {slides.map((slide, index) => (
+        <img
+          key={slide.image}
+          src={slide.image}
+          alt=""
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            objectPosition: "center",
+            opacity: index === currentSlide ? 1 : 0,
+            transition: "opacity 800ms ease-in-out",
+          }}
+        />
+      ))}
+
+      {/* Dark overlay so text remains readable */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "linear-gradient(90deg, rgba(20,18,15,.88) 0%, rgba(20,18,15,.62) 45%, rgba(20,18,15,.20) 100%)",
+        }}
+      />
+
+      {/* Gold glow */}
+      <div
+        className="hero-blob"
+        style={{
+          position: "absolute",
+          top: -40,
+          right: -30,
+          width: 160,
+          height: 160,
+          borderRadius: "50%",
+          background: `radial-gradient(circle, ${GOLD}55 0%, transparent 70%)`,
+          pointerEvents: "none",
+        }}
+      />
+
+      <div
+        className="hero-blob-2"
+        style={{
+          position: "absolute",
+          bottom: -50,
+          left: 60,
+          width: 140,
+          height: 140,
+          borderRadius: "50%",
+          background: `radial-gradient(circle, ${GOLD}33 0%, transparent 70%)`,
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* Hero text */}
+      <div
+        style={{
+          position: "relative",
+          zIndex: 2,
+          height: "100%",
+          padding: "36px 28px",
+          display: "flex",
+          alignItems: "center",
+          boxSizing: "border-box",
+        }}
+      >
+        <div style={{ maxWidth: 500 }}>
+          <h1
+            className="hero-shimmer-text"
+            style={{
+              fontSize: 26,
+              fontWeight: 800,
+              margin: "0 0 8px",
+            }}
+          >
+            {slides[currentSlide].title}
+          </h1>
+
+          <p
+            style={{
+              color: "#D8D3C6",
+              fontSize: 14,
+              margin: 0,
+              maxWidth: 480,
+              lineHeight: 1.5,
+            }}
+          >
+            {slides[currentSlide].text}
+          </p>
+        </div>
+      </div>
+
+      {/* Previous button */}
+      <button
+        type="button"
+        onClick={previousSlide}
+        aria-label="Previous banner"
+        style={{
+          position: "absolute",
+          left: 12,
+          top: "50%",
+          transform: "translateY(-50%)",
+          zIndex: 3,
+          width: 34,
+          height: 34,
+          borderRadius: "50%",
+          border: "1px solid rgba(255,255,255,.7)",
+          background: "rgba(255,255,255,.9)",
+          color: INK,
+          cursor: "pointer",
+          fontSize: 20,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        ‹
+      </button>
+
+      {/* Next button */}
+      <button
+        type="button"
+        onClick={nextSlide}
+        aria-label="Next banner"
+        style={{
+          position: "absolute",
+          right: 12,
+          top: "50%",
+          transform: "translateY(-50%)",
+          zIndex: 3,
+          width: 34,
+          height: 34,
+          borderRadius: "50%",
+          border: "1px solid rgba(255,255,255,.7)",
+          background: "rgba(255,255,255,.9)",
+          color: INK,
+          cursor: "pointer",
+          fontSize: 20,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        ›
+      </button>
+
+      {/* Dots */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: 12,
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 3,
+          display: "flex",
+          gap: 6,
+        }}
+      >
+        {slides.map((slide, index) => (
+          <button
+            key={slide.image}
+            type="button"
+            onClick={() => setCurrentSlide(index)}
+            aria-label={`Show banner ${index + 1}`}
+            style={{
+              width: index === currentSlide ? 22 : 7,
+              height: 7,
+              padding: 0,
+              border: "none",
+              borderRadius: 999,
+              background:
+                index === currentSlide
+                  ? GOLD
+                  : "rgba(255,255,255,.65)",
+              cursor: "pointer",
+              transition: "all .25s ease",
+            }}
+          />
+        ))}
       </div>
     </div>
   );
