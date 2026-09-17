@@ -3,60 +3,139 @@ import { useState, useCallback, useEffect } from "react";
 const API_BASE = "https://savivah-backend-firestore.onrender.com/api";
 const PAGE_SIZE = 24;
 
-/**
- * The backend deliberately only returns a bounded page per request (see
- * ProductPage in the Python backend's schemas/product.py) — this hook is
- * the frontend half of that contract. Calling loadMore() again appends the
- * next page using the cursor the backend handed back; changing the search
- * term resets to a fresh first page.
- */
-export function useProductPagination(search) {
+export function useProductPagination(search = "", filters = {}) {
   const [items, setItems] = useState([]);
   const [cursor, setCursor] = useState(null);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const fetchPage = useCallback(async (afterCursor) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
-      if (search) params.set("search", search);
-      if (afterCursor) params.set("cursor", afterCursor);
+  const {
+    category = "",
+    minPrice = "",
+    maxPrice = "",
+    inStock = false,
+    verifiedSeller = false,
+    sort = "relevance",
+  } = filters;
 
-      const res = await fetch(`${API_BASE}/products?${params}`);
-      if (!res.ok) throw new Error("Could not load products");
-      const page = await res.json();
+  const fetchPage = useCallback(
+    async (afterCursor = null) => {
+      setLoading(true);
+      setError(null);
 
-      // Defensive: if the response isn't the paginated { items, next_cursor }
-      // shape we expect (e.g. an old/mismatched backend), fall back to an
-      // empty page rather than setting state to `undefined` — that would
-      // otherwise crash the product grid's .map() a render later.
-      const newItems = Array.isArray(page?.items) ? page.items : Array.isArray(page) ? page : [];
-      const nextCursor = page?.next_cursor ?? null;
+      try {
+        const params = new URLSearchParams();
 
-      setItems((prev) => (afterCursor ? [...prev, ...newItems] : newItems));
-      setCursor(nextCursor);
-      setHasMore(Boolean(nextCursor));
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [search]);
+        params.set("limit", String(PAGE_SIZE));
 
-  // Reset and fetch page one whenever the search term changes.
+        if (search.trim()) {
+          params.set("search", search.trim());
+        }
+
+        if (category) {
+          params.set("category", category);
+        }
+
+        if (minPrice !== "" && minPrice != null) {
+          params.set("min_price", String(minPrice));
+        }
+
+        if (maxPrice !== "" && maxPrice != null) {
+          params.set("max_price", String(maxPrice));
+        }
+
+        if (inStock) {
+          params.set("in_stock", "true");
+        }
+
+        if (verifiedSeller) {
+          params.set("verified_seller", "true");
+        }
+
+        if (sort && sort !== "relevance") {
+          params.set("sort", sort);
+        }
+
+        if (afterCursor) {
+          params.set("cursor", afterCursor);
+        }
+
+        const response = await fetch(
+          `${API_BASE}/products?${params.toString()}`
+        );
+
+        if (!response.ok) {
+          let message = "Could not load products";
+
+          try {
+            const data = await response.json();
+            message = data?.detail || data?.error || message;
+          } catch {
+            // Keep default message.
+          }
+
+          throw new Error(message);
+        }
+
+        const page = await response.json();
+
+        const newItems = Array.isArray(page?.items)
+          ? page.items
+          : Array.isArray(page)
+            ? page
+            : [];
+
+        const nextCursor = page?.next_cursor ?? null;
+
+        setItems((previous) =>
+          afterCursor
+            ? [...previous, ...newItems]
+            : newItems
+        );
+
+        setCursor(nextCursor);
+        setHasMore(Boolean(nextCursor));
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Could not load products"
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [
+      search,
+      category,
+      minPrice,
+      maxPrice,
+      inStock,
+      verifiedSeller,
+      sort,
+    ]
+  );
+
   useEffect(() => {
     setItems([]);
     setCursor(null);
     setHasMore(true);
+
     fetchPage(null);
   }, [fetchPage]);
 
   const loadMore = useCallback(() => {
-    if (!loading && hasMore) fetchPage(cursor);
+    if (!loading && hasMore && cursor) {
+      fetchPage(cursor);
+    }
   }, [loading, hasMore, cursor, fetchPage]);
 
-  return { items, loading, error, hasMore, loadMore };
+  return {
+    items,
+    loading,
+    error,
+    hasMore,
+    loadMore,
+  };
 }
