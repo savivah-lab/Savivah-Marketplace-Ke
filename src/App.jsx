@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   ShoppingCart, Store, Package, Plus, Trash2, X,
   CheckCircle2, Clock, Truck, RotateCcw, TrendingUp, LayoutGrid,
-  Wallet, Search, LogIn, LogOut, UserPlus, Loader2, AlertTriangle, ChevronDown
+  Wallet, Search, LogIn, LogOut, UserPlus, Loader2, AlertTriangle, ChevronDown,
+  ChevronLeft, ChevronRight, SlidersHorizontal, BadgeCheck
 } from "lucide-react";
 import { useProductPagination } from "./hooks/useProductPagination";
 
@@ -47,9 +48,10 @@ export default function SavivahApp() {
   const [showAuth, setShowAuth] = useState(false);
   const [showThankYou, setShowThankYou] = useState(false);
   const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState({ category: "", minPrice: "", maxPrice: "", inStock: false, verifiedSeller: false, sort: "relevance" });
   const [toast, setToast] = useState(null);
 
-  const { items: products, loading: loadingProducts, error: productsError, hasMore, loadMore } = useProductPagination(search);
+  const { items: products, loading: loadingProducts, error: productsError, hasMore, loadMore } = useProductPagination(search, filters);
   const apiDown = Boolean(productsError);
 
   useEffect(() => {
@@ -115,7 +117,7 @@ export default function SavivahApp() {
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px 60px" }}>
         {role === "customer" && (
           <CustomerView products={products} loading={loadingProducts} search={search} setSearch={setSearch}
-            addToCart={addToCart} hasMore={hasMore} loadMore={loadMore} />
+            filters={filters} setFilters={setFilters} addToCart={addToCart} hasMore={hasMore} loadMore={loadMore} />
         )}
         {role === "seller" && (
           <SellerView auth={auth} apiFetch={apiFetch} notify={notify} requireLogin={() => setShowAuth(true)} />
@@ -439,151 +441,218 @@ function Hero() {
   );
 }
 
-function ProductImage({ src, name }) {
+function getProductImages(product) {
+  const urls = Array.isArray(product?.image_urls) ? product.image_urls.filter(Boolean) : [];
+  if (urls.length) return urls;
+  return product?.image_url ? [product.image_url] : [];
+}
+
+function ProductImage({ src, name, onClick, count = 0 }) {
   const [failed, setFailed] = useState(!src);
+  useEffect(() => setFailed(!src), [src]);
 
   return (
-    <div style={{
-      width: "100%",
-      aspectRatio: "4 / 3",
-      background: "#F4F1E8",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      overflow: "hidden",
-      position: "relative",
-    }}>
+    <button type="button" onClick={onClick} style={{
+      width: "100%", aspectRatio: "4 / 3", background: "#F4F1E8", border: "none", padding: 0,
+      display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", position: "relative",
+      cursor: onClick ? "zoom-in" : "default",
+    }} aria-label={onClick ? `View photos of ${name || "product"}` : undefined}>
       {failed ? (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 7, color: "#B8B09D" }}>
           <Package size={42} strokeWidth={1.4} />
           <span style={{ fontSize: 11.5, fontWeight: 600 }}>Image coming soon</span>
         </div>
       ) : (
-        <img
-          src={src}
-          alt={name || "Product"}
-          onError={() => setFailed(true)}
-          style={{ width: "100%", height: "100%", display: "block", objectFit: "cover", objectPosition: "center" }}
-        />
+        <img src={src} alt={name || "Product"} onError={() => setFailed(true)}
+          style={{ width: "100%", height: "100%", display: "block", objectFit: "cover", objectPosition: "center" }} />
       )}
+      {count > 1 && !failed && (
+        <span style={{ position: "absolute", right: 8, bottom: 8, background: "rgba(22,21,19,.82)", color: "#fff",
+          borderRadius: 999, padding: "4px 8px", fontSize: 10.5, fontWeight: 700 }}>
+          {count} photos
+        </span>
+      )}
+    </button>
+  );
+}
+
+function ProductGalleryModal({ product, onClose, addToCart }) {
+  const images = getProductImages(product);
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => { setIndex(0); }, [product?.id]);
+  useEffect(() => {
+    if (!product) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowLeft") setIndex((i) => Math.max(0, i - 1));
+      if (e.key === "ArrowRight") setIndex((i) => Math.min(images.length - 1, i + 1));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [product, images.length, onClose]);
+
+  if (!product) return null;
+  const current = images[index];
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", padding: 14 }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(12,11,9,.72)" }} />
+      <div style={{ position: "relative", width: 900, maxWidth: "96vw", maxHeight: "94vh", background: "#fff", borderRadius: 16,
+        overflow: "auto", boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
+        <button onClick={onClose} aria-label="Close" style={{ position: "absolute", right: 12, top: 12, zIndex: 2, width: 36, height: 36,
+          borderRadius: "50%", border: "none", background: "rgba(255,255,255,.92)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <X size={19} />
+        </button>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 22, padding: 22 }}>
+          <div>
+            <div style={{ position: "relative", background: "#F4F1E8", borderRadius: 12, overflow: "hidden", aspectRatio: "1 / 1" }}>
+              {current ? <img src={current} alt={product.name} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} /> :
+                <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#B8B09D" }}><Package size={58} /></div>}
+              {images.length > 1 && <>
+                <button disabled={index === 0} onClick={() => setIndex((i) => i - 1)} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", width: 38, height: 38,
+                  borderRadius: "50%", border: "none", background: "rgba(255,255,255,.9)", cursor: index === 0 ? "default" : "pointer", opacity: index === 0 ? .4 : 1 }}><ChevronLeft size={20} /></button>
+                <button disabled={index === images.length - 1} onClick={() => setIndex((i) => i + 1)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", width: 38, height: 38,
+                  borderRadius: "50%", border: "none", background: "rgba(255,255,255,.9)", cursor: index === images.length - 1 ? "default" : "pointer", opacity: index === images.length - 1 ? .4 : 1 }}><ChevronRight size={20} /></button>
+              </>}
+            </div>
+            {images.length > 0 && <div style={{ display: "flex", gap: 8, marginTop: 10, overflowX: "auto", paddingBottom: 2 }}>
+              {images.map((url, i) => <button key={`${url}-${i}`} onClick={() => setIndex(i)} style={{ width: 66, height: 66, flex: "0 0 auto", padding: 2,
+                borderRadius: 8, border: `2px solid ${i === index ? GOLD : "#E4DFD0"}`, background: "#fff", cursor: "pointer", overflow: "hidden" }}>
+                <img src={url} alt={`${product.name} ${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 5 }} />
+              </button>)}
+            </div>}
+            {images.length > 1 && <div style={{ textAlign: "center", fontSize: 11.5, color: "#8A8471", marginTop: 7 }}>{index + 1} / {images.length}</div>}
+          </div>
+
+          <div style={{ padding: "8px 2px" }}>
+            <div style={{ fontSize: 10.5, color: GOLD_DARK, fontWeight: 700, marginBottom: 8 }}>{product.store_name || "Savivah seller"}</div>
+            <h2 style={{ margin: "0 0 8px", fontSize: 23, lineHeight: 1.25 }}>{product.name}</h2>
+            {product.category && <div style={{ fontSize: 11.5, color: "#77715F", textTransform: "capitalize", marginBottom: 12 }}>{product.category}</div>}
+            <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 14 }}>{money(product.price)}</div>
+            <div style={{ fontSize: 12.5, color: "#5F5A50", lineHeight: 1.6, whiteSpace: "pre-wrap", marginBottom: 16 }}>
+              {product.description || "No description provided."}
+            </div>
+            <div style={{ fontSize: 12, color: Number(product.stock) > 0 ? "#2E7D32" : "#B3261E", fontWeight: 700, marginBottom: 16 }}>
+              {Number(product.stock) > 0 ? `${product.stock} in stock` : "Out of stock"}
+            </div>
+            <button onClick={() => { addToCart(product); onClose(); }} disabled={Number(product.stock) <= 0} style={{ width: "100%", padding: 12,
+              borderRadius: 8, border: "none", background: Number(product.stock) > 0 ? INK : "#D9D4C4", color: "#fff", fontWeight: 700, cursor: Number(product.stock) > 0 ? "pointer" : "not-allowed" }}>
+              <Plus size={15} style={{ verticalAlign: "-3px", marginRight: 5 }} /> Add to cart
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
-function CustomerView({ products, loading, search, setSearch, addToCart, hasMore, loadMore }) {
+const MARKET_CATEGORIES = [
+  "Electronics", "Phones & Accessories", "Computers & Accessories", "Fashion", "Shoes & Bags",
+  "Beauty & Personal Care", "Home & Kitchen", "Appliances", "Sports & Outdoors", "Baby & Kids",
+  "Books & Stationery", "Health & Wellness", "Automotive", "Tools & Hardware", "Garden & Agriculture",
+  "Pet Supplies", "Arts & Crafts", "Groceries & Household",
+];
+
+function CustomerView({ products, loading, search, setSearch, filters, setFilters, addToCart, hasMore, loadMore }) {
+  const [galleryProduct, setGalleryProduct] = useState(null);
+  const [showFilters, setShowFilters] = useState(false);
+
+  const visibleProducts = products.filter((p) => {
+    const price = Number(p.price) || 0;
+    if (filters.minPrice !== "" && price < Number(filters.minPrice)) return false;
+    if (filters.maxPrice !== "" && price > Number(filters.maxPrice)) return false;
+    if (filters.inStock && Number(p.stock) <= 0) return false;
+    if (filters.verifiedSeller && !p.store_verified) return false;
+    return true;
+  }).sort((a, b) => {
+    if (filters.sort === "price_asc") return Number(a.price) - Number(b.price);
+    if (filters.sort === "price_desc") return Number(b.price) - Number(a.price);
+    if (filters.sort === "newest") return String(b.created_at || "").localeCompare(String(a.created_at || ""));
+    return 0;
+  });
+
+  const updateFilter = (key, value) => setFilters((f) => ({ ...f, [key]: value }));
+  const clearFilters = () => setFilters({ category: "", minPrice: "", maxPrice: "", inStock: false, verifiedSeller: false, sort: "relevance" });
+  const activeFilterCount = [filters.category, filters.minPrice, filters.maxPrice, filters.inStock, filters.verifiedSeller].filter(Boolean).length;
+
   return (
     <div>
       <Hero />
-      <div style={{ position: "relative", maxWidth: 420, marginBottom: 20 }}>
-        <Search size={16} style={{ position: "absolute", left: 12, top: 12, color: "#9a9484" }} />
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search products..."
-          style={{ width: "100%", padding: "10px 12px 10px 34px", borderRadius: 8, border: "1px solid #E4DFD0", fontSize: 14, boxSizing: "border-box" }} />
-      </div>
-      {loading && products.length === 0 ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#9a9484", fontSize: 14, padding: 40, justifyContent: "center" }}>
-          <Loader2 size={16} className="spin" /> Loading products...
+      <div style={{ display: "flex", gap: 10, alignItems: "stretch", marginBottom: 12, flexWrap: "wrap" }}>
+        <div style={{ position: "relative", flex: "1 1 360px", maxWidth: 620 }}>
+          <Search size={16} style={{ position: "absolute", left: 12, top: 12, color: "#9a9484" }} />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search products..."
+            style={{ width: "100%", padding: "10px 12px 10px 34px", borderRadius: 8, border: "1px solid #E4DFD0", fontSize: 14, boxSizing: "border-box" }} />
         </div>
+        <button onClick={() => setShowFilters((v) => !v)} style={{ display: "flex", alignItems: "center", gap: 7, padding: "10px 14px", borderRadius: 8,
+          border: `1px solid ${activeFilterCount ? GOLD : "#E4DFD0"}`, background: activeFilterCount ? "#FBF1DA" : "#fff", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>
+          <SlidersHorizontal size={15} /> Filters {activeFilterCount ? `(${activeFilterCount})` : ""}
+        </button>
+        <select value={filters.sort} onChange={(e) => updateFilter("sort", e.target.value)} style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #E4DFD0", background: "#fff", fontSize: 13 }}>
+          <option value="relevance">Sort: Relevance</option><option value="newest">Newest</option><option value="price_asc">Price: Low to high</option><option value="price_desc">Price: High to low</option>
+        </select>
+      </div>
+
+      {showFilters && <div style={{ background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 14, marginBottom: 18 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
+          <label style={{ fontSize: 11.5, color: "#77715F", fontWeight: 700 }}>Department
+            <select value={filters.category} onChange={(e) => updateFilter("category", e.target.value)} style={{ width: "100%", marginTop: 5, padding: "9px 10px", borderRadius: 7, border: "1px solid #E4DFD0", background: "#fff" }}>
+              <option value="">All departments</option>{MARKET_CATEGORIES.map((c) => <option key={c} value={c.toLowerCase()}>{c}</option>)}
+            </select>
+          </label>
+          <label style={{ fontSize: 11.5, color: "#77715F", fontWeight: 700 }}>Minimum price
+            <input type="number" min="0" placeholder="KES 0" value={filters.minPrice} onChange={(e) => updateFilter("minPrice", e.target.value)} style={{ width: "100%", marginTop: 5, padding: "9px 10px", borderRadius: 7, border: "1px solid #E4DFD0", boxSizing: "border-box" }} />
+          </label>
+          <label style={{ fontSize: 11.5, color: "#77715F", fontWeight: 700 }}>Maximum price
+            <input type="number" min="0" placeholder="No limit" value={filters.maxPrice} onChange={(e) => updateFilter("maxPrice", e.target.value)} style={{ width: "100%", marginTop: 5, padding: "9px 10px", borderRadius: 7, border: "1px solid #E4DFD0", boxSizing: "border-box" }} />
+          </label>
+          <label style={{ fontSize: 11.5, color: "#77715F", fontWeight: 700, display: "flex", alignItems: "center", gap: 8, paddingTop: 20 }}>
+            <input type="checkbox" checked={filters.inStock} onChange={(e) => updateFilter("inStock", e.target.checked)} /> In stock only
+          </label>
+          <label style={{ fontSize: 11.5, color: "#77715F", fontWeight: 700, display: "flex", alignItems: "center", gap: 8, paddingTop: 20 }}>
+            <input type="checkbox" checked={filters.verifiedSeller} onChange={(e) => updateFilter("verifiedSeller", e.target.checked)} /> Verified sellers
+          </label>
+          <button onClick={clearFilters} style={{ alignSelf: "end", padding: "9px 12px", borderRadius: 7, border: "1px solid #E4DFD0", background: "#fff", cursor: "pointer", fontWeight: 700 }}>Clear filters</button>
+        </div>
+        <div style={{ marginTop: 12, fontSize: 11, color: "#9A9484" }}>Quick price ranges: under KES 1,000 · KES 1,000–5,000 · KES 5,000–10,000 · KES 10,000–25,000 · KES 25,000+</div>
+      </div>}
+
+      {loading && products.length === 0 ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#9a9484", fontSize: 14, padding: 40, justifyContent: "center" }}><Loader2 size={16} className="spin" /> Loading products...</div>
       ) : (
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 16 }}>
-            {products.map((p, i) => (
-              <div key={p.id} className="product-card fade-in-up" style={{
-                animationDelay: `${Math.min(i, 8) * 0.05}s`,
-                background: "#fff",
-                border: "1px solid #ECE8DD",
-                borderRadius: 12,
-                overflow: "hidden",
-                display: "flex",
-                flexDirection: "column",
-                minWidth: 0,
-              }}>
-                <ProductImage src={p.image_url} name={p.name} />
-
+            {visibleProducts.map((p, i) => {
+              const images = getProductImages(p);
+              return <div key={p.id} className="product-card fade-in-up" style={{ animationDelay: `${Math.min(i, 8) * 0.05}s`, background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, overflow: "hidden", display: "flex", flexDirection: "column", minWidth: 0 }}>
+                <ProductImage src={images[0]} name={p.name} count={images.length} onClick={() => setGalleryProduct(p)} />
                 <div style={{ padding: "12px 13px 13px", display: "flex", flexDirection: "column", flex: 1 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, minHeight: 30 }}>
-                    <div style={{ width: 28, height: 28, borderRadius: "50%", background: "#F4F1E8", border: "1px solid #E8E1D1", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      <Store size={13} color={GOLD_DARK} />
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 9.5, color: "#9a9484", lineHeight: 1.1 }}>Sold by</div>
-                      <div style={{ fontSize: 11.5, color: GOLD_DARK, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {p.store_name || "Savivah seller"}
-                      </div>
-                    </div>
+                    <div style={{ width: 28, height: 28, borderRadius: "50%", background: "#F4F1E8", border: "1px solid #E8E1D1", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Store size={13} color={GOLD_DARK} /></div>
+                    <div style={{ minWidth: 0 }}><div style={{ fontSize: 9.5, color: "#9a9484", lineHeight: 1.1 }}>Sold by</div><div style={{ fontSize: 11.5, color: GOLD_DARK, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.store_name || "Savivah seller"}</div></div>
+                    {p.store_verified && <BadgeCheck size={14} color={GOLD_DARK} title="Verified seller" />}
                   </div>
-
-                  <div style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.35, minHeight: 38, marginBottom: 5 }}>
-                    {p.name || "Product name"}
+                  <div style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.35, minHeight: 38, marginBottom: 5 }}>{p.name || "Product name"}</div>
+                  {p.category && <div style={{ fontSize: 10.5, color: "#77715f", marginBottom: 5, textTransform: "capitalize" }}>{p.category}</div>}
+                  <div style={{ marginBottom: 10, padding: "8px 9px", background: "#FAF9F5", borderRadius: 7, border: "1px solid #F0ECE2" }}>
+                    <div style={{ fontSize: 9.5, color: "#9A9484", fontWeight: 700, textTransform: "uppercase", letterSpacing: .35, marginBottom: 3 }}>Description</div>
+                    <div style={{ fontSize: 11.5, color: "#5F5A50", lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{p.description ? String(p.description) : "No description provided."}</div>
                   </div>
-
-                  {p.category && (
-                    <div style={{ fontSize: 10.5, color: "#77715f", marginBottom: 5, textTransform: "capitalize" }}>
-                      {p.category}
-                    </div>
-                  )}
-
-                  {/* Product description */}
-                  <div style={{
-                    marginBottom: 10,
-                    padding: "8px 9px",
-                    background: "#FAF9F5",
-                    borderRadius: 7,
-                    border: "1px solid #F0ECE2",
-                  }}>
-                    <div style={{
-                      fontSize: 9.5,
-                      color: "#9A9484",
-                      fontWeight: 700,
-                      textTransform: "uppercase",
-                      letterSpacing: 0.35,
-                      marginBottom: 3,
-                    }}>
-                      Description
-                    </div>
-                    <div style={{
-                      fontSize: 11.5,
-                      color: "#5F5A50",
-                      lineHeight: 1.45,
-                      overflowWrap: "anywhere",
-                    }}>
-                      {p.description ? String(p.description) : "No description provided."}
-                    </div>
-                  </div>
-
-                  <div style={{ fontSize: 11.5, color: "#8a8471", marginBottom: 10 }}>
-                    {Number(p.stock) > 0 ? `${p.stock} in stock` : "Out of stock"}
-                  </div>
-
+                  <div style={{ fontSize: 11.5, color: Number(p.stock) > 0 ? "#8a8471" : "#B3261E", marginBottom: 10 }}>{Number(p.stock) > 0 ? `${p.stock} in stock` : "Out of stock"}</div>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: "auto" }}>
                     <span style={{ fontWeight: 800, fontSize: 15.5 }}>{money(p.price)}</span>
-                    <button onClick={() => addToCart(p)} disabled={p.stock === 0} style={{
-                      display: "flex", alignItems: "center", gap: 4, padding: "7px 11px", borderRadius: 7, border: "none",
-                      cursor: p.stock ? "pointer" : "not-allowed", background: p.stock ? INK : "#D9D4C4", color: "#fff", fontSize: 12, fontWeight: 600, flexShrink: 0,
-                    }}>
-                      <Plus size={13} /> Add
-                    </button>
+                    <button onClick={() => addToCart(p)} disabled={Number(p.stock) <= 0} style={{ display: "flex", alignItems: "center", gap: 4, padding: "7px 11px", borderRadius: 7, border: "none", cursor: Number(p.stock) > 0 ? "pointer" : "not-allowed", background: Number(p.stock) > 0 ? INK : "#D9D4C4", color: "#fff", fontSize: 12, fontWeight: 600, flexShrink: 0 }}><Plus size={13} /> Add</button>
                   </div>
                 </div>
-              </div>
-            ))}
-            {products.length === 0 && (
-              <div style={{ color: "#9a9484", fontSize: 14, gridColumn: "1/-1", padding: 40, textAlign: "center" }}>
-                No products yet — list one from the Seller dashboard tab.
-              </div>
-            )}
+              </div>;
+            })}
+            {visibleProducts.length === 0 && <div style={{ color: "#9a9484", fontSize: 14, gridColumn: "1/-1", padding: 40, textAlign: "center" }}>No products match these filters.</div>}
           </div>
-          {hasMore && (
-            <div style={{ textAlign: "center", marginTop: 24 }}>
-              <button onClick={loadMore} disabled={loading} style={{
-                display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 22px", borderRadius: 8,
-                border: `1px solid ${GOLD}`, background: "#fff", color: INK, fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>
-                {loading ? <Loader2 size={14} className="spin" /> : <ChevronDown size={14} />}
-                Load more
-              </button>
-            </div>
-          )}
+          {hasMore && <div style={{ textAlign: "center", marginTop: 24 }}><button onClick={loadMore} disabled={loading} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 22px", borderRadius: 8, border: `1px solid ${GOLD}`, background: "#fff", color: INK, fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>{loading ? <Loader2 size={14} className="spin" /> : <ChevronDown size={14} />} Load more</button></div>}
         </>
       )}
+      {galleryProduct && <ProductGalleryModal product={galleryProduct} onClose={() => setGalleryProduct(null)} addToCart={addToCart} />}
     </div>
   );
 }
@@ -683,7 +752,7 @@ function SellerView({ auth, apiFetch, notify, requireLogin }) {
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [storeForm, setStoreForm] = useState({ name: "", businessRegNumber: "", payoutMethod: "mpesa", payoutAccount: "" });
-  const [productForm, setProductForm] = useState({ name: "", price: "", stock: "", category: "", description: "", imageUrl: "" });
+  const [productForm, setProductForm] = useState({ name: "", price: "", stock: "", category: "", description: "", imageUrl: "", imageUrls: [""] });
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [loading, setLoading] = useState(false);
@@ -737,24 +806,24 @@ function SellerView({ auth, apiFetch, notify, requireLogin }) {
     try {
       const p = await apiFetch(`/stores/${activeStoreId}/products`, {
         method: "POST",
-        body: JSON.stringify({ ...productForm, price: parseFloat(productForm.price), stock: parseInt(productForm.stock) }),
+        body: JSON.stringify({ ...productForm, imageUrls: productForm.imageUrls.filter(Boolean), price: parseFloat(productForm.price), stock: parseInt(productForm.stock) }),
       });
       setProducts((ps) => [p, ...ps]);
-      setProductForm({ name: "", price: "", stock: "", category: "", description: "", imageUrl: "" });
+      setProductForm({ name: "", price: "", stock: "", category: "", description: "", imageUrl: "", imageUrls: [""] });
       notify(`"${p.name}" listed`);
     } catch (e) { notify(e.message); }
   };
 
   const startEdit = (p) => {
     setEditingId(p.id);
-    setEditForm({ name: p.name, description: p.description || "", category: p.category || "", price: p.price, stock: p.stock, imageUrl: p.image_url || "" });
+    setEditForm({ name: p.name, description: p.description || "", category: p.category || "", price: p.price, stock: p.stock, imageUrl: p.image_url || "", imageUrls: (Array.isArray(p.image_urls) && p.image_urls.length ? p.image_urls : (p.image_url ? [p.image_url] : [""])) });
   };
 
   const saveEdit = async (id) => {
     try {
       const updated = await apiFetch(`/products/${id}`, {
         method: "PUT",
-        body: JSON.stringify({ ...editForm, price: parseFloat(editForm.price), stock: parseInt(editForm.stock) }),
+        body: JSON.stringify({ ...editForm, imageUrls: (editForm.imageUrls || []).filter(Boolean), price: parseFloat(editForm.price), stock: parseInt(editForm.stock) }),
       });
       setProducts((ps) => ps.map((p) => (p.id === id ? updated : p)));
       setEditingId(null);
@@ -817,7 +886,17 @@ function SellerView({ auth, apiFetch, notify, requireLogin }) {
                     <input placeholder="Category" value={productForm.category} onChange={(e) => setProductForm({ ...productForm, category: e.target.value })} style={inputStyle} />
                     <textarea placeholder="Description" value={productForm.description} onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
                       style={{ ...inputStyle, minHeight: 60, resize: "vertical", fontFamily: "inherit" }} />
-                    <input placeholder="Image URL" value={productForm.imageUrl} onChange={(e) => setProductForm({ ...productForm, imageUrl: e.target.value })} style={inputStyle} />
+                    <div style={{ border: "1px solid #E4DFD0", borderRadius: 8, padding: 10, background: "#FAF9F5" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                        <div><div style={{ fontSize: 12.5, fontWeight: 700 }}>Product photos</div><div style={{ fontSize: 10.5, color: "#9A9484" }}>Add up to 6 photos — front, back, side, details, packaging.</div></div>
+                        {productForm.imageUrls.length < 6 && <button type="button" onClick={() => setProductForm({ ...productForm, imageUrls: [...productForm.imageUrls, ""] })} style={{ border: `1px solid ${GOLD}`, background: "#fff", color: GOLD_DARK, borderRadius: 6, padding: "5px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}><Plus size={12} style={{ verticalAlign: "-2px" }} /> Add photo</button>}
+                      </div>
+                      {productForm.imageUrls.map((url, i) => <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                        <input placeholder={`Photo ${i + 1} ${i === 0 ? "(front/main)" : i === 1 ? "(back)" : i === 2 ? "(side)" : "(detail/other)"}`} value={url} onChange={(e) => { const a = [...productForm.imageUrls]; a[i] = e.target.value; setProductForm({ ...productForm, imageUrls: a, imageUrl: a[0] || "" }); }} style={{ ...inputStyle, flex: 1 }} />
+                        {productForm.imageUrls.length > 1 && <button type="button" onClick={() => { const a = productForm.imageUrls.filter((_, n) => n !== i); setProductForm({ ...productForm, imageUrls: a, imageUrl: a[0] || "" }); }} style={{ width: 34, border: "1px solid #E4DFD0", background: "#fff", borderRadius: 6, cursor: "pointer", color: "#B3261E" }}><Trash2 size={14} /></button>}
+                      </div>)}
+                      {productForm.imageUrls.some(Boolean) && <div style={{ display: "flex", gap: 6, overflowX: "auto" }}>{productForm.imageUrls.filter(Boolean).map((url, i) => <img key={url + i} src={url} alt={`Preview ${i + 1}`} style={{ width: 54, height: 54, objectFit: "cover", borderRadius: 6, border: "1px solid #E4DFD0" }} onError={(e) => { e.currentTarget.style.opacity = .35; }} />)}</div>}
+                    </div>
                     <div style={{ display: "flex", gap: 8 }}>
                       <input placeholder="Price (KES)" type="number" value={productForm.price} onChange={(e) => setProductForm({ ...productForm, price: e.target.value })} style={inputStyle} />
                       <input placeholder="Stock qty" type="number" value={productForm.stock} onChange={(e) => setProductForm({ ...productForm, stock: e.target.value })} style={inputStyle} />
@@ -835,7 +914,10 @@ function SellerView({ auth, apiFetch, notify, requireLogin }) {
                           <input placeholder="Category" value={editForm.category} onChange={(e) => setEditForm({ ...editForm, category: e.target.value })} style={{ ...inputStyle, fontSize: 12.5 }} />
                           <textarea placeholder="Description" value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
                             style={{ ...inputStyle, fontSize: 12.5, minHeight: 48, resize: "vertical", fontFamily: "inherit" }} />
-                          <input placeholder="Image URL" value={editForm.imageUrl} onChange={(e) => setEditForm({ ...editForm, imageUrl: e.target.value })} style={{ ...inputStyle, fontSize: 12.5 }} />
+                          <div style={{ border: "1px solid #E4DFD0", borderRadius: 8, padding: 9, background: "#fff" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7 }}><b style={{ fontSize: 11.5 }}>Product photos</b>{(editForm.imageUrls || []).length < 6 && <button type="button" onClick={() => setEditForm({ ...editForm, imageUrls: [...(editForm.imageUrls || []), ""] })} style={{ border: `1px solid ${GOLD}`, background: "#fff", color: GOLD_DARK, borderRadius: 6, padding: "4px 7px", fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}><Plus size={11} style={{ verticalAlign: "-2px" }} /> Add</button>}</div>
+                            {(editForm.imageUrls || [""]).map((url, i) => <div key={i} style={{ display: "flex", gap: 5, marginBottom: 5 }}><input placeholder={`Photo ${i + 1}`} value={url} onChange={(e) => { const a = [...(editForm.imageUrls || [])]; a[i] = e.target.value; setEditForm({ ...editForm, imageUrls: a, imageUrl: a[0] || "" }); }} style={{ ...inputStyle, fontSize: 12.5, flex: 1 }} />{(editForm.imageUrls || []).length > 1 && <button type="button" onClick={() => { const a = editForm.imageUrls.filter((_, n) => n !== i); setEditForm({ ...editForm, imageUrls: a, imageUrl: a[0] || "" }); }} style={{ width: 30, border: "1px solid #E4DFD0", background: "#fff", borderRadius: 5, color: "#B3261E", cursor: "pointer" }}><Trash2 size={12} /></button>}</div>)}
+                          </div>
                           <div style={{ display: "flex", gap: 6 }}>
                             <input type="number" placeholder="Price" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} style={{ ...inputStyle, fontSize: 12.5 }} />
                             <input type="number" placeholder="Stock" value={editForm.stock} onChange={(e) => setEditForm({ ...editForm, stock: e.target.value })} style={{ ...inputStyle, fontSize: 12.5 }} />
