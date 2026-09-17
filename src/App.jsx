@@ -114,15 +114,38 @@ export default function SavivahApp() {
         </div>
       )}
 
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px 60px" }}>
-        {role === "customer" && (
-          <CustomerView products={products} loading={loadingProducts} search={search} setSearch={setSearch}
-            filters={filters} setFilters={setFilters} addToCart={addToCart} hasMore={hasMore} loadMore={loadMore} />
-        )}
-        {role === "seller" && (
-          <SellerView auth={auth} apiFetch={apiFetch} notify={notify} requireLogin={() => setShowAuth(true)} />
-        )}
-      </div>
+      <div
+  style={{
+    width: "100%",
+    maxWidth: 1400,
+    margin: "0 auto",
+    padding: "24px 28px 60px",
+    boxSizing: "border-box",
+  }}
+>
+  {role === "customer" && (
+    <CustomerView
+      products={products}
+      loading={loadingProducts}
+      search={search}
+      setSearch={setSearch}
+      filters={filters}
+      setFilters={setFilters}
+      addToCart={addToCart}
+      hasMore={hasMore}
+      loadMore={loadMore}
+    />
+  )}
+
+  {role === "seller" && (
+    <SellerView
+      auth={auth}
+      apiFetch={apiFetch}
+      notify={notify}
+      requireLogin={() => setShowAuth(true)}
+    />
+  )}
+</div>
 
       <Footer />
 
@@ -203,7 +226,7 @@ function Footer() {
   return (
     <footer style={{ background: INK, color: "#D8D3C6", marginTop: 40 }}>
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "40px 20px 28px", display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 28 }}>
+        gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 28 }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
             <img src="/savivah-mark-square.png" alt="" width="28" height="28" />
