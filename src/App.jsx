@@ -428,7 +428,7 @@ function Hero() {
       text: "Find electronics, fashion, beauty, home essentials and more from sellers across Kenya.",
     },
     {
-      image: "/hero-3.jpg",
+      image: "/hero-3.jpeg",
       title: "Shop from independent sellers",
       text: "Support local businesses while discovering products that fit your everyday needs.",
     },
