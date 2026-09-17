@@ -800,19 +800,80 @@ function SellerView({ auth, apiFetch, notify, requireLogin }) {
     } catch (e) { notify(e.message); } finally { setLoading(false); }
   };
 
-  const addProduct = async (e) => {
-    e.preventDefault();
-    if (!activeStoreId || !productForm.name || !productForm.price || !productForm.stock) return;
-    try {
-      const p = await apiFetch(`/stores/${activeStoreId}/products`, {
+const addProduct = async (e) => {
+  e.preventDefault();
+
+  const name = productForm.name.trim();
+  const price = Number(productForm.price);
+  const stock = Number(productForm.stock);
+  const imageUrls = (productForm.imageUrls || [])
+    .map((url) => url.trim())
+    .filter(Boolean);
+
+  // Give a visible message instead of silently doing nothing.
+  if (!activeStoreId) {
+    notify("Please select an active store first.");
+    return;
+  }
+
+  if (!name) {
+    notify("Please enter a product name.");
+    return;
+  }
+
+  if (!Number.isFinite(price) || price <= 0) {
+    notify("Please enter a valid price.");
+    return;
+  }
+
+  if (!Number.isInteger(stock) || stock < 0) {
+    notify("Please enter a valid stock quantity.");
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    const payload = {
+      name,
+      description: productForm.description?.trim() || null,
+      category: productForm.category?.trim() || null,
+      price,
+      stock,
+      imageUrl: imageUrls[0] || null,
+      imageUrls,
+    };
+
+    console.log("Creating product:", payload);
+
+    const p = await apiFetch(
+      `/stores/${activeStoreId}/products`,
+      {
         method: "POST",
-        body: JSON.stringify({ ...productForm, imageUrls: productForm.imageUrls.filter(Boolean), price: parseFloat(productForm.price), stock: parseInt(productForm.stock) }),
-      });
-      setProducts((ps) => [p, ...ps]);
-      setProductForm({ name: "", price: "", stock: "", category: "", description: "", imageUrl: "", imageUrls: [""] });
-      notify(`"${p.name}" listed`);
-    } catch (e) { notify(e.message); }
-  };
+        body: JSON.stringify(payload),
+      }
+    );
+
+    setProducts((ps) => [p, ...ps]);
+
+    setProductForm({
+      name: "",
+      price: "",
+      stock: "",
+      category: "",
+      description: "",
+      imageUrl: "",
+      imageUrls: [""],
+    });
+
+    notify(`"${p.name}" listed successfully`);
+  } catch (e) {
+    console.error("Add product failed:", e);
+    notify(e.message || "Could not add product");
+  } finally {
+    setLoading(false);
+  }
+};
 
   const startEdit = (p) => {
     setEditingId(p.id);
