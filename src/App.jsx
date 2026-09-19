@@ -145,7 +145,7 @@ export default function SavivahApp() {
             filters={filters} setFilters={setFilters} addToCart={addToCart} hasMore={hasMore} loadMore={loadMore}
             auth={auth} apiFetch={apiFetch} notify={notify} customerTab={customerTab} setCustomerTab={setCustomerTab}
             wishlist={wishlist} toggleWishlist={toggleWishlist} cartCount={cartCount}
-            onBecomeSeller={() => setShowSellerApplication(true)} />
+            onBecomeSeller={() => setShowSellerApplication(true)} onLoginClick={() => setShowAuth(true)} />
         )}
         {role === "seller" && (
           <SellerView auth={auth} apiFetch={apiFetch} notify={notify} requireLogin={() => setShowAuth(true)} />
@@ -307,7 +307,7 @@ function TopBar({ role, setRole, cartCount, onCartClick, auth, onLoginClick, onL
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {role === "customer" && (
             <>
-              <button onClick={() => setCustomerTab && setCustomerTab("dashboard")} style={{ display: "flex", alignItems: "center", gap: 7, padding: "9px 12px",
+              <button onClick={() => { if (auth) { setCustomerTab && setCustomerTab("dashboard"); } else { onLoginClick(); } }} style={{ display: "flex", alignItems: "center", gap: 7, padding: "9px 12px",
                 borderRadius: 8, border: "1px solid #E4DFD0", background: "#fff", cursor: "pointer", fontWeight: 600,
                 fontSize: 13, color: INK }}>
                 <User size={15} color={GOLD_DARK} /> Account
@@ -584,7 +584,7 @@ const MARKET_CATEGORIES = [
   "Pet Supplies", "Arts & Crafts", "Groceries & Household",
 ];
 
-function CustomerView({ products, loading, search, setSearch, filters, setFilters, addToCart, hasMore, loadMore, auth, apiFetch, notify, customerTab, setCustomerTab, wishlist, toggleWishlist, cartCount, onBecomeSeller }) {
+function CustomerView({ products, loading, search, setSearch, filters, setFilters, addToCart, hasMore, loadMore, auth, apiFetch, notify, customerTab, setCustomerTab, wishlist, toggleWishlist, cartCount, onBecomeSeller, onLoginClick }) {
   const [galleryProduct, setGalleryProduct] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
 
@@ -599,6 +599,7 @@ function CustomerView({ products, loading, search, setSearch, filters, setFilter
         addToCart={addToCart}
         cartCount={cartCount}
         onBecomeSeller={onBecomeSeller}
+        onLoginClick={onLoginClick}
         apiFetch={apiFetch}
         notify={notify}
       />
@@ -1012,10 +1013,23 @@ function SellerView({ auth, apiFetch, notify, requireLogin }) {
 
 
 
-function CustomerDashboard({ auth, tab, setTab, wishlist, toggleWishlist, addToCart, cartCount, onBecomeSeller, apiFetch, notify }) {
+function CustomerDashboard({ auth, tab, setTab, wishlist, toggleWishlist, addToCart, cartCount, onBecomeSeller, onLoginClick, apiFetch, notify }) {
   const user = auth?.user;
   if (!user) {
-    return <EmptyState icon={User} title="Your customer dashboard" message="Log in to view your account, wishlist and settings." actionLabel="Log in" onAction={() => {}} />;
+    return (
+      <div style={{ textAlign: "center", padding: "60px 20px", maxWidth: 520, margin: "0 auto" }}>
+        <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#F4F1E8", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+          <User size={24} color={GOLD_DARK} />
+        </div>
+        <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 8 }}>Your customer dashboard</div>
+        <div style={{ fontSize: 13.5, color: "#77715f", marginBottom: 18, lineHeight: 1.5 }}>Log in or create a customer account to view your details, wishlist and settings.</div>
+        <div style={{ display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
+          <button onClick={onLoginClick} style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: INK, color: "#fff", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>Log in / Register</button>
+          <button onClick={onLoginClick} style={{ padding: "10px 20px", borderRadius: 8, border: `1px solid ${GOLD}`, background: "#fff", color: GOLD_DARK, fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>Become a seller</button>
+        </div>
+        <div style={{ marginTop: 14, fontSize: 11.5, color: "#9A9484" }}>Seller registration starts from a customer account after email verification.</div>
+      </div>
+    );
   }
 
   const sellerStatus = user.sellerStatus || "none";
