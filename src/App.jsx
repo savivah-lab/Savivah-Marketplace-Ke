@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
-  ShoppingCart, Store, Package, Plus, Trash2, X,
+  ShoppingCart, Store, Package, Plus, Trash2, X, User, Heart, Settings, Home, ShieldCheck, CreditCard, KeyRound, Check,
   CheckCircle2, Clock, Truck, RotateCcw, TrendingUp, LayoutGrid,
   Wallet, Search, LogIn, LogOut, UserPlus, Loader2, AlertTriangle, ChevronDown,
   ChevronLeft, ChevronRight, SlidersHorizontal, BadgeCheck
@@ -50,6 +50,14 @@ export default function SavivahApp() {
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({ category: "", minPrice: "", maxPrice: "", inStock: false, verifiedSeller: false, sort: "relevance" });
   const [toast, setToast] = useState(null);
+  const [customerTab, setCustomerTab] = useState("shop");
+  const [wishlist, setWishlist] = useState(() => {
+    try {
+      const saved = localStorage.getItem("savivah_wishlist");
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  const [showSellerApplication, setShowSellerApplication] = useState(false);
 
   const { items: products, loading: loadingProducts, error: productsError, hasMore, loadMore } = useProductPagination(search, filters);
   const apiDown = Boolean(productsError);
@@ -66,6 +74,15 @@ export default function SavivahApp() {
     localStorage.setItem("savivah_role", role);
   }, [role]);
 
+  useEffect(() => {
+    localStorage.setItem("savivah_wishlist", JSON.stringify(wishlist));
+  }, [wishlist]);
+
+  useEffect(() => {
+    if (auth?.user?.role === "seller") setRole("seller");
+    else if (role === "seller") setRole("customer");
+  }, [auth, role]);
+
   const notify = useCallback((msg) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
@@ -80,6 +97,14 @@ export default function SavivahApp() {
     if (!res.ok) throw new Error(data?.error || data?.detail || `Request failed (${res.status})`);
     return data;
   }, [auth]);
+
+  const toggleWishlist = (product) => {
+    setWishlist((items) => {
+      const exists = items.some((item) => item.id === product.id);
+      notify(exists ? `Removed "${product.name}" from wishlist` : `Saved "${product.name}" to wishlist`);
+      return exists ? items.filter((item) => item.id !== product.id) : [...items, product];
+    });
+  };
 
   const addToCart = (product) => {
     setCart((c) => {
@@ -105,7 +130,7 @@ export default function SavivahApp() {
   return (
     <div style={{ fontFamily: "'Segoe UI', Arial, sans-serif", background: "#FAF9F5", minHeight: "100vh", color: INK }}>
       <TopBar role={role} setRole={setRole} cartCount={cartCount} onCartClick={() => setShowCart(true)}
-        auth={auth} onLoginClick={() => setShowAuth(true)} onLogout={logout} />
+        auth={auth} onLoginClick={() => setShowAuth(true)} onLogout={logout} customerTab={customerTab} setCustomerTab={setCustomerTab} />
 
       {toast && <Toast msg={toast} />}
       {apiDown && (
@@ -114,38 +139,18 @@ export default function SavivahApp() {
         </div>
       )}
 
-      <div
-  style={{
-    width: "100%",
-    maxWidth: 1400,
-    margin: "0 auto",
-    padding: "24px 28px 60px",
-    boxSizing: "border-box",
-  }}
->
-  {role === "customer" && (
-    <CustomerView
-      products={products}
-      loading={loadingProducts}
-      search={search}
-      setSearch={setSearch}
-      filters={filters}
-      setFilters={setFilters}
-      addToCart={addToCart}
-      hasMore={hasMore}
-      loadMore={loadMore}
-    />
-  )}
-
-  {role === "seller" && (
-    <SellerView
-      auth={auth}
-      apiFetch={apiFetch}
-      notify={notify}
-      requireLogin={() => setShowAuth(true)}
-    />
-  )}
-</div>
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px 60px" }}>
+        {role === "customer" && (
+          <CustomerView products={products} loading={loadingProducts} search={search} setSearch={setSearch}
+            filters={filters} setFilters={setFilters} addToCart={addToCart} hasMore={hasMore} loadMore={loadMore}
+            auth={auth} apiFetch={apiFetch} notify={notify} customerTab={customerTab} setCustomerTab={setCustomerTab}
+            wishlist={wishlist} toggleWishlist={toggleWishlist} cartCount={cartCount}
+            onBecomeSeller={() => setShowSellerApplication(true)} />
+        )}
+        {role === "seller" && (
+          <SellerView auth={auth} apiFetch={apiFetch} notify={notify} requireLogin={() => setShowAuth(true)} />
+        )}
+      </div>
 
       <Footer />
 
@@ -157,6 +162,15 @@ export default function SavivahApp() {
       )}
 
       {showThankYou && <ThankYouModal onClose={() => setShowThankYou(false)} />}
+
+      {showSellerApplication && (
+        <SellerApplicationModal
+          auth={auth}
+          apiFetch={apiFetch}
+          notify={notify}
+          onClose={() => setShowSellerApplication(false)}
+        />
+      )}
 
       {showAuth && (
         <AuthModal
@@ -226,7 +240,7 @@ function Footer() {
   return (
     <footer style={{ background: INK, color: "#D8D3C6", marginTop: 40 }}>
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "40px 20px 28px", display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 28 }}>
+        gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 28 }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
             <img src="/savivah-mark-square.png" alt="" width="28" height="28" />
@@ -268,10 +282,10 @@ function FooterLink({ label }) {
   );
 }
 
-function TopBar({ role, setRole, cartCount, onCartClick, auth, onLoginClick, onLogout }) {
+function TopBar({ role, setRole, cartCount, onCartClick, auth, onLoginClick, onLogout, customerTab, setCustomerTab }) {
   const tabs = [
     { key: "customer", label: "Marketplace", icon: LayoutGrid },
-    { key: "seller", label: "Seller dashboard", icon: Store },
+    ...(auth?.user?.role === "seller" ? [{ key: "seller", label: "Seller dashboard", icon: Store }] : []),
   ];
   return (
     <div style={{ background: "#fff", borderBottom: "1px solid #ECE8DD", position: "sticky", top: 0, zIndex: 20 }}>
@@ -281,7 +295,7 @@ function TopBar({ role, setRole, cartCount, onCartClick, auth, onLoginClick, onL
           {tabs.map((t) => {
             const Icon = t.icon; const active = role === t.key;
             return (
-              <button key={t.key} onClick={() => setRole(t.key)} style={{
+              <button key={t.key} onClick={() => { setRole(t.key); if (t.key === "customer" && setCustomerTab) setCustomerTab("shop"); }} style={{
                 display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: "none",
                 cursor: "pointer", fontSize: 13.5, fontWeight: 600, background: active ? INK : "transparent",
                 color: active ? "#fff" : "#5B564A" }}>
@@ -292,15 +306,22 @@ function TopBar({ role, setRole, cartCount, onCartClick, auth, onLoginClick, onL
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {role === "customer" && (
-            <button onClick={onCartClick} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 16px",
-              borderRadius: 8, border: `1px solid ${GOLD}`, background: "#fff", cursor: "pointer", fontWeight: 600,
-              fontSize: 14, color: INK, position: "relative" }}>
-              <ShoppingCart size={17} color={GOLD_DARK} /> Cart
+            <>
+              <button onClick={() => setCustomerTab && setCustomerTab("dashboard")} style={{ display: "flex", alignItems: "center", gap: 7, padding: "9px 12px",
+                borderRadius: 8, border: "1px solid #E4DFD0", background: "#fff", cursor: "pointer", fontWeight: 600,
+                fontSize: 13, color: INK }}>
+                <User size={15} color={GOLD_DARK} /> Account
+              </button>
+              <button onClick={onCartClick} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 16px",
+                borderRadius: 8, border: `1px solid ${GOLD}`, background: "#fff", cursor: "pointer", fontWeight: 600,
+                fontSize: 14, color: INK, position: "relative" }}>
+                <ShoppingCart size={17} color={GOLD_DARK} /> Cart
               {cartCount > 0 && (
                 <span style={{ position: "absolute", top: -8, right: -8, background: GOLD, color: "#fff", borderRadius: "50%",
                   width: 20, height: 20, fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{cartCount}</span>
               )}
-            </button>
+              </button>
+            </>
           )}
           {auth ? (
             <button onClick={onLogout} style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px",
@@ -320,364 +341,131 @@ function TopBar({ role, setRole, cartCount, onCartClick, auth, onLoginClick, onL
 }
 
 function AuthModal({ onClose, onAuthed }) {
-  const [mode, setMode] = useState("login"); // login | register
-  const [form, setForm] = useState({ fullName: "", email: "", phoneNumber: "", password: "", role: "customer" });
+  const [mode, setMode] = useState("login");
+  const [step, setStep] = useState("form");
+  const [form, setForm] = useState({ fullName: "", email: "", phoneNumber: "", password: "" });
+  const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const googleBtnRef = useRef(null);
 
+  const submit = async (e) => {
+    e.preventDefault(); setLoading(true); setError("");
+    try {
+      const path = mode === "login" ? "/auth/login" : "/auth/register";
+      const body = mode === "login" ? { email: form.email, password: form.password } : { ...form, role: "customer" };
+      const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const data = await res.json();
+      if (!res.ok) {
+        if (mode === "login" && res.status === 403 && /verify/i.test(data?.detail || "")) {
+          setStep("verify");
+        }
+        throw new Error(data?.error || data?.detail || "Something went wrong");
+      }
+      if (mode === "register" && data?.user && data.user.emailVerified === false) {
+        setStep("verify");
+        return;
+      }
+      onAuthed(data);
+    } catch (e) { setError(e.message); } finally { setLoading(false); }
+  };
+
+  const verify = async (e) => {
+    e.preventDefault(); setLoading(true); setError("");
+    try {
+      const res = await fetch(`${API_BASE}/auth/verify-email`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: form.email, code }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || data?.detail || "Invalid verification code");
+      onAuthed(data);
+    } catch (e) { setError(e.message); } finally { setLoading(false); }
+  };
+
+  const resend = async () => {
+    setLoading(true); setError("");
+    try {
+      const res = await fetch(`${API_BASE}/auth/resend-verification`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: form.email }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || data?.detail || "Could not resend code");
+      setError("");
+    } catch (e) { setError(e.message); } finally { setLoading(false); }
+  };
+
   const handleGoogleCredential = useCallback(async (response) => {
     setError(""); setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/auth/google`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken: response.credential, role: form.role }),
-      });
+      const res = await fetch(`${API_BASE}/auth/google`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken: response.credential, role: "customer" }) });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Google sign-in failed");
+      if (!res.ok) throw new Error(data?.error || data?.detail || "Google sign-in failed");
       onAuthed(data);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [form.role, onAuthed]);
+    } catch (e) { setError(e.message); } finally { setLoading(false); }
+  }, [onAuthed]);
 
   useEffect(() => {
-    if (!GOOGLE_CLIENT_ID) return; // no Client ID configured — button just won't render
+    if (!GOOGLE_CLIENT_ID || step !== "form") return;
     const renderButton = () => {
       if (!window.google || !googleBtnRef.current) return;
       window.google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleGoogleCredential });
       window.google.accounts.id.renderButton(googleBtnRef.current, { theme: "outline", size: "large", width: 332 });
     };
-    if (window.google) {
-      renderButton();
-    } else {
-      const script = document.createElement("script");
-      script.src = "https://accounts.google.com/gsi/client";
-      script.async = true;
-      script.onload = renderButton;
-      document.body.appendChild(script);
-    }
-  }, [handleGoogleCredential]);
-
-  const submit = async (e) => {
-    e.preventDefault();
-    setLoading(true); setError("");
-    try {
-      const path = mode === "login" ? "/auth/login" : "/auth/register";
-      const body = mode === "login" ? { email: form.email, password: form.password } : form;
-      const res = await fetch(`${API_BASE}${path}`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Something went wrong");
-      onAuthed(data);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+    if (window.google) renderButton();
+    else { const script = document.createElement("script"); script.src = "https://accounts.google.com/gsi/client"; script.async = true; script.onload = renderButton; document.body.appendChild(script); }
+  }, [handleGoogleCredential, step]);
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(20,18,12,0.4)" }} />
       <div style={{ position: "relative", width: 380, maxWidth: "90vw", background: "#fff", borderRadius: 14, padding: 24 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <div style={{ fontWeight: 800, fontSize: 17 }}>{mode === "login" ? "Log in" : "Create an account"}</div>
+          <div style={{ fontWeight: 800, fontSize: 17 }}>{step === "verify" ? "Verify your email" : mode === "login" ? "Log in" : "Create an account"}</div>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={20} /></button>
         </div>
-
-        {mode === "register" && (
-          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-            <label style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, fontSize: 13, border: "1px solid #E4DFD0", borderRadius: 7, padding: "9px 11px", cursor: "pointer" }}>
-              <input type="radio" checked={form.role === "customer"} onChange={() => setForm({ ...form, role: "customer" })} /> Customer
-            </label>
-            <label style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, fontSize: 13, border: "1px solid #E4DFD0", borderRadius: 7, padding: "9px 11px", cursor: "pointer" }}>
-              <input type="radio" checked={form.role === "seller"} onChange={() => setForm({ ...form, role: "seller" })} /> Seller
-            </label>
-          </div>
-        )}
-
-        {GOOGLE_CLIENT_ID && (
+        {step === "verify" ? (
+          <form onSubmit={verify} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ background: "#FBF1DA", borderRadius: 8, padding: 12, fontSize: 12.5, color: "#6E5A1A" }}>We sent a 6-digit verification code to <b>{form.email}</b>.</div>
+            <input inputMode="numeric" maxLength={6} placeholder="6-digit code" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} style={{ ...inputStyle, textAlign: "center", letterSpacing: 6, fontSize: 20 }} required />
+            {error && <div style={{ fontSize: 12.5, color: "#B3261E" }}>{error}</div>}
+            <button disabled={loading || code.length !== 6} style={{ padding: "11px 0", borderRadius: 8, border: "none", background: GOLD, color: "#fff", fontWeight: 700, cursor: "pointer" }}>{loading ? "Verifying..." : "Verify email"}</button>
+            <button type="button" onClick={resend} disabled={loading} style={{ padding: "9px 0", borderRadius: 8, border: "1px solid #E4DFD0", background: "#fff", fontWeight: 700, cursor: "pointer" }}>Resend code</button>
+          </form>
+        ) : (
           <>
-            <div ref={googleBtnRef} style={{ display: "flex", justifyContent: "center", marginBottom: 14 }} />
-            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0 16px", color: "#9a9484", fontSize: 12 }}>
-              <div style={{ flex: 1, height: 1, background: "#ECE8DD" }} />
-              or continue with email
-              <div style={{ flex: 1, height: 1, background: "#ECE8DD" }} />
-            </div>
+            {GOOGLE_CLIENT_ID && <><div ref={googleBtnRef} style={{ display: "flex", justifyContent: "center", marginBottom: 14 }} /><div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0 16px", color: "#9a9484", fontSize: 12 }}><div style={{ flex: 1, height: 1, background: "#ECE8DD" }} />or continue with email<div style={{ flex: 1, height: 1, background: "#ECE8DD" }} /></div></>}
+            <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {mode === "register" && <><input placeholder="Full name" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} style={inputStyle} required /><input placeholder="Phone number (07...)" value={form.phoneNumber} onChange={(e) => setForm({ ...form, phoneNumber: e.target.value })} style={inputStyle} required /></>}
+              <input type="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} style={inputStyle} required />
+              <input type="password" placeholder="Password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} style={inputStyle} required />
+              {error && <div style={{ fontSize: 12.5, color: "#B3261E" }}>{error}</div>}
+              <button type="submit" disabled={loading} style={{ padding: "11px 0", borderRadius: 8, border: "none", background: GOLD, color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>{loading ? <Loader2 size={15} className="spin" /> : mode === "login" ? <LogIn size={15} /> : <UserPlus size={15} />}{mode === "login" ? "Log in" : "Create account"}</button>
+            </form>
+            <div style={{ textAlign: "center", marginTop: 14, fontSize: 12.5, color: "#77715f" }}>{mode === "login" ? "New to Savivah? " : "Already have an account? "}<button onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }} style={{ background: "none", border: "none", color: GOLD_DARK, fontWeight: 700, cursor: "pointer" }}>{mode === "login" ? "Create one" : "Log in"}</button></div>
           </>
         )}
-
-        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {mode === "register" && (
-            <>
-              <input placeholder="Full name" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} style={inputStyle} required />
-              <input placeholder="Phone number (07...)" value={form.phoneNumber} onChange={(e) => setForm({ ...form, phoneNumber: e.target.value })} style={inputStyle} required />
-            </>
-          )}
-          <input type="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} style={inputStyle} required />
-          <input type="password" placeholder="Password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} style={inputStyle} required />
-          {error && <div style={{ fontSize: 12.5, color: "#B3261E" }}>{error}</div>}
-          <button type="submit" disabled={loading} style={{ padding: "11px 0", borderRadius: 8, border: "none", background: GOLD,
-            color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-            {loading ? <Loader2 size={15} className="spin" /> : mode === "login" ? <LogIn size={15} /> : <UserPlus size={15} />}
-            {mode === "login" ? "Log in" : "Create account"}
-          </button>
-        </form>
-        <div style={{ textAlign: "center", marginTop: 14, fontSize: 12.5, color: "#77715f" }}>
-          {mode === "login" ? "New to Savivah? " : "Already have an account? "}
-          <button onClick={() => setMode(mode === "login" ? "register" : "login")} style={{ background: "none", border: "none", color: GOLD_DARK, fontWeight: 700, cursor: "pointer" }}>
-            {mode === "login" ? "Create one" : "Log in"}
-          </button>
-        </div>
       </div>
     </div>
   );
 }
 
 function Hero() {
-  const slides = [
-    {
-      image: "/hero-1.jpg",
-      title: "Shop Kenya's trusted marketplace",
-      text: "Every store here is independently owned. Your payment is held safely in escrow until delivery is confirmed — so you shop with confidence.",
-    },
-    {
-      image: "/hero-2.jpg",
-      title: "Discover great products",
-      text: "Find electronics, fashion, beauty, home essentials and more from sellers across Kenya.",
-    },
-    {
-      image: "/hero-3.jpeg",
-      title: "Shop from independent sellers",
-      text: "Support local businesses while discovering products that fit your everyday needs.",
-    },
-    {
-      image: "/hero-4.jpg",
-      title: "Shop with confidence",
-      text: "Savivah helps make marketplace shopping simple, convenient and secure.",
-    },
-  ];
-
-  const [currentSlide, setCurrentSlide] = useState(0);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentSlide((current) => (current + 1) % slides.length);
-    }, 5000);
-
-    return () => clearInterval(timer);
-  }, [slides.length]);
-
-  const previousSlide = () => {
-    setCurrentSlide((current) =>
-      current === 0 ? slides.length - 1 : current - 1
-    );
-  };
-
-  const nextSlide = () => {
-    setCurrentSlide((current) =>
-      (current + 1) % slides.length
-    );
-  };
-
   return (
-    <div
-      style={{
-        position: "relative",
-        overflow: "hidden",
-        borderRadius: 16,
-        height: 260,
-        marginBottom: 24,
-        background: INK,
-      }}
-    >
-      {/* Background images */}
-      {slides.map((slide, index) => (
-        <img
-          key={slide.image}
-          src={slide.image}
-          alt=""
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            objectPosition: "center",
-            opacity: index === currentSlide ? 1 : 0,
-            transition: "opacity 800ms ease-in-out",
-          }}
-        />
-      ))}
-
-      {/* Dark overlay so text remains readable */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            "linear-gradient(90deg, rgba(20,18,15,.88) 0%, rgba(20,18,15,.62) 45%, rgba(20,18,15,.20) 100%)",
-        }}
-      />
-
-      {/* Gold glow */}
-      <div
-        className="hero-blob"
-        style={{
-          position: "absolute",
-          top: -40,
-          right: -30,
-          width: 160,
-          height: 160,
-          borderRadius: "50%",
-          background: `radial-gradient(circle, ${GOLD}55 0%, transparent 70%)`,
-          pointerEvents: "none",
-        }}
-      />
-
-      <div
-        className="hero-blob-2"
-        style={{
-          position: "absolute",
-          bottom: -50,
-          left: 60,
-          width: 140,
-          height: 140,
-          borderRadius: "50%",
-          background: `radial-gradient(circle, ${GOLD}33 0%, transparent 70%)`,
-          pointerEvents: "none",
-        }}
-      />
-
-      {/* Hero text */}
-      <div
-        style={{
-          position: "relative",
-          zIndex: 2,
-          height: "100%",
-          padding: "36px 28px",
-          display: "flex",
-          alignItems: "center",
-          boxSizing: "border-box",
-        }}
-      >
-        <div style={{ maxWidth: 500 }}>
-          <h1
-            className="hero-shimmer-text"
-            style={{
-              fontSize: 26,
-              fontWeight: 800,
-              margin: "0 0 8px",
-            }}
-          >
-            {slides[currentSlide].title}
-          </h1>
-
-          <p
-            style={{
-              color: "#D8D3C6",
-              fontSize: 14,
-              margin: 0,
-              maxWidth: 480,
-              lineHeight: 1.5,
-            }}
-          >
-            {slides[currentSlide].text}
-          </p>
-        </div>
-      </div>
-
-      {/* Previous button */}
-      <button
-        type="button"
-        onClick={previousSlide}
-        aria-label="Previous banner"
-        style={{
-          position: "absolute",
-          left: 12,
-          top: "50%",
-          transform: "translateY(-50%)",
-          zIndex: 3,
-          width: 34,
-          height: 34,
-          borderRadius: "50%",
-          border: "1px solid rgba(255,255,255,.7)",
-          background: "rgba(255,255,255,.9)",
-          color: INK,
-          cursor: "pointer",
-          fontSize: 20,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        ‹
-      </button>
-
-      {/* Next button */}
-      <button
-        type="button"
-        onClick={nextSlide}
-        aria-label="Next banner"
-        style={{
-          position: "absolute",
-          right: 12,
-          top: "50%",
-          transform: "translateY(-50%)",
-          zIndex: 3,
-          width: 34,
-          height: 34,
-          borderRadius: "50%",
-          border: "1px solid rgba(255,255,255,.7)",
-          background: "rgba(255,255,255,.9)",
-          color: INK,
-          cursor: "pointer",
-          fontSize: 20,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        ›
-      </button>
-
-      {/* Dots */}
-      <div
-        style={{
-          position: "absolute",
-          bottom: 12,
-          left: "50%",
-          transform: "translateX(-50%)",
-          zIndex: 3,
-          display: "flex",
-          gap: 6,
-        }}
-      >
-        {slides.map((slide, index) => (
-          <button
-            key={slide.image}
-            type="button"
-            onClick={() => setCurrentSlide(index)}
-            aria-label={`Show banner ${index + 1}`}
-            style={{
-              width: index === currentSlide ? 22 : 7,
-              height: 7,
-              padding: 0,
-              border: "none",
-              borderRadius: 999,
-              background:
-                index === currentSlide
-                  ? GOLD
-                  : "rgba(255,255,255,.65)",
-              cursor: "pointer",
-              transition: "all .25s ease",
-            }}
-          />
-        ))}
+    <div style={{
+      position: "relative", overflow: "hidden", borderRadius: 16, padding: "36px 28px",
+      background: `linear-gradient(135deg, ${INK} 0%, #2A2620 100%)`, marginBottom: 24,
+    }}>
+      <div className="hero-blob" style={{
+        position: "absolute", top: -40, right: -30, width: 160, height: 160, borderRadius: "50%",
+        background: `radial-gradient(circle, ${GOLD}55 0%, transparent 70%)`, pointerEvents: "none",
+      }} />
+      <div className="hero-blob-2" style={{
+        position: "absolute", bottom: -50, left: 60, width: 140, height: 140, borderRadius: "50%",
+        background: `radial-gradient(circle, ${GOLD}33 0%, transparent 70%)`, pointerEvents: "none",
+      }} />
+      <div style={{ position: "relative" }}>
+        <h1 className="hero-shimmer-text" style={{ fontSize: 26, fontWeight: 800, margin: "0 0 8px" }}>
+          Shop Kenya's trusted marketplace
+        </h1>
+        <p style={{ color: "#D8D3C6", fontSize: 14, margin: 0, maxWidth: 480, lineHeight: 1.5 }}>
+          Every store here is independently owned. Your payment is held safely in escrow until delivery is confirmed — so you shop with confidence.
+        </p>
       </div>
     </div>
   );
@@ -796,9 +584,26 @@ const MARKET_CATEGORIES = [
   "Pet Supplies", "Arts & Crafts", "Groceries & Household",
 ];
 
-function CustomerView({ products, loading, search, setSearch, filters, setFilters, addToCart, hasMore, loadMore }) {
+function CustomerView({ products, loading, search, setSearch, filters, setFilters, addToCart, hasMore, loadMore, auth, apiFetch, notify, customerTab, setCustomerTab, wishlist, toggleWishlist, cartCount, onBecomeSeller }) {
   const [galleryProduct, setGalleryProduct] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
+
+  if (customerTab !== "shop") {
+    return (
+      <CustomerDashboard
+        auth={auth}
+        tab={customerTab}
+        setTab={setCustomerTab}
+        wishlist={wishlist}
+        toggleWishlist={toggleWishlist}
+        addToCart={addToCart}
+        cartCount={cartCount}
+        onBecomeSeller={onBecomeSeller}
+        apiFetch={apiFetch}
+        notify={notify}
+      />
+    );
+  }
 
   const visibleProducts = products.filter((p) => {
     const price = Number(p.price) || 0;
@@ -867,7 +672,10 @@ function CustomerView({ products, loading, search, setSearch, filters, setFilter
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 16 }}>
             {visibleProducts.map((p, i) => {
               const images = getProductImages(p);
-              return <div key={p.id} className="product-card fade-in-up" style={{ animationDelay: `${Math.min(i, 8) * 0.05}s`, background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, overflow: "hidden", display: "flex", flexDirection: "column", minWidth: 0 }}>
+              return <div key={p.id} className="product-card fade-in-up" style={{ position: "relative", animationDelay: `${Math.min(i, 8) * 0.05}s`, background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, overflow: "hidden", display: "flex", flexDirection: "column", minWidth: 0 }}>
+                <button type="button" aria-label="Toggle wishlist" onClick={() => toggleWishlist(p)} style={{ position: "absolute", top: 9, right: 9, zIndex: 2, width: 34, height: 34, borderRadius: "50%", border: "1px solid #E4DFD0", background: "rgba(255,255,255,.94)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                  <Heart size={16} fill={wishlist.some((w) => w.id === p.id) ? GOLD : "none"} color={wishlist.some((w) => w.id === p.id) ? GOLD_DARK : "#77715f"} />
+                </button>
                 <ProductImage src={images[0]} name={p.name} count={images.length} onClick={() => setGalleryProduct(p)} />
                 <div style={{ padding: "12px 13px 13px", display: "flex", flexDirection: "column", flex: 1 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, minHeight: 30 }}>
@@ -1042,80 +850,19 @@ function SellerView({ auth, apiFetch, notify, requireLogin }) {
     } catch (e) { notify(e.message); } finally { setLoading(false); }
   };
 
-const addProduct = async (e) => {
-  e.preventDefault();
-
-  const name = productForm.name.trim();
-  const price = Number(productForm.price);
-  const stock = Number(productForm.stock);
-  const imageUrls = (productForm.imageUrls || [])
-    .map((url) => url.trim())
-    .filter(Boolean);
-
-  // Give a visible message instead of silently doing nothing.
-  if (!activeStoreId) {
-    notify("Please select an active store first.");
-    return;
-  }
-
-  if (!name) {
-    notify("Please enter a product name.");
-    return;
-  }
-
-  if (!Number.isFinite(price) || price <= 0) {
-    notify("Please enter a valid price.");
-    return;
-  }
-
-  if (!Number.isInteger(stock) || stock < 0) {
-    notify("Please enter a valid stock quantity.");
-    return;
-  }
-
-  setLoading(true);
-
-  try {
-    const payload = {
-      name,
-      description: productForm.description?.trim() || null,
-      category: productForm.category?.trim() || null,
-      price,
-      stock,
-      imageUrl: imageUrls[0] || null,
-      imageUrls,
-    };
-
-    console.log("Creating product:", payload);
-
-    const p = await apiFetch(
-      `/stores/${activeStoreId}/products`,
-      {
+  const addProduct = async (e) => {
+    e.preventDefault();
+    if (!activeStoreId || !productForm.name || !productForm.price || !productForm.stock) return;
+    try {
+      const p = await apiFetch(`/stores/${activeStoreId}/products`, {
         method: "POST",
-        body: JSON.stringify(payload),
-      }
-    );
-
-    setProducts((ps) => [p, ...ps]);
-
-    setProductForm({
-      name: "",
-      price: "",
-      stock: "",
-      category: "",
-      description: "",
-      imageUrl: "",
-      imageUrls: [""],
-    });
-
-    notify(`"${p.name}" listed successfully`);
-  } catch (e) {
-    console.error("Add product failed:", e);
-    notify(e.message || "Could not add product");
-  } finally {
-    setLoading(false);
-  }
-};
+        body: JSON.stringify({ ...productForm, imageUrls: productForm.imageUrls.filter(Boolean), price: parseFloat(productForm.price), stock: parseInt(productForm.stock) }),
+      });
+      setProducts((ps) => [p, ...ps]);
+      setProductForm({ name: "", price: "", stock: "", category: "", description: "", imageUrl: "", imageUrls: [""] });
+      notify(`"${p.name}" listed`);
+    } catch (e) { notify(e.message); }
+  };
 
   const startEdit = (p) => {
     setEditingId(p.id);
@@ -1204,10 +951,9 @@ const addProduct = async (e) => {
                       <input placeholder="Price (KES)" type="number" value={productForm.price} onChange={(e) => setProductForm({ ...productForm, price: e.target.value })} style={inputStyle} />
                       <input placeholder="Stock qty" type="number" value={productForm.stock} onChange={(e) => setProductForm({ ...productForm, stock: e.target.value })} style={inputStyle} />
                     </div>
-                      <button type="submit" style={{ padding: "10px 0", borderRadius: 8, border: "none", background: INK, color: "#fff", fontWeight: 700, fontSize: 13.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                    <button type="submit" style={{ padding: "10px 0", borderRadius: 8, border: "none", background: INK, color: "#fff", fontWeight: 700, fontSize: 13.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                       <Plus size={15} /> Add to my store
                     </button>
-                  
                   </form>
                   <div style={{ fontWeight: 700, fontSize: 15, margin: "22px 0 10px" }}>Your listings ({products.length})</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 320, overflowY: "auto" }}>
@@ -1264,6 +1010,116 @@ const addProduct = async (e) => {
   );
 }
 
+
+
+function CustomerDashboard({ auth, tab, setTab, wishlist, toggleWishlist, addToCart, cartCount, onBecomeSeller, apiFetch, notify }) {
+  const user = auth?.user;
+  if (!user) {
+    return <EmptyState icon={User} title="Your customer dashboard" message="Log in to view your account, wishlist and settings." actionLabel="Log in" onAction={() => {}} />;
+  }
+
+  const sellerStatus = user.sellerStatus || "none";
+  const tabButton = (key, label, Icon) => (
+    <button onClick={() => setTab(key)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "10px 12px", border: "none", borderRadius: 8, background: tab === key ? "#F4F1E8" : "transparent", color: tab === key ? INK : "#77715F", fontWeight: tab === key ? 700 : 600, cursor: "pointer", textAlign: "left" }}><Icon size={15} />{label}</button>
+  );
+
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 20, alignItems: "start" }}>
+        <div style={{ background: "#fff", border: "1px solid #ECE8DD", borderRadius: 14, padding: 12 }}>
+          <div style={{ padding: "12px 10px 16px", borderBottom: "1px solid #F0ECE2", marginBottom: 8 }}>
+            <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#F4F1E8", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 8 }}><User size={20} color={GOLD_DARK} /></div>
+            <div style={{ fontWeight: 800, fontSize: 14 }}>{user.fullName || "Customer"}</div>
+            <div style={{ fontSize: 11.5, color: "#8A8471", wordBreak: "break-word" }}>{user.email}</div>
+          </div>
+          {tabButton("dashboard", "Overview", Home)}
+          {tabButton("wishlist", `Wishlist (${wishlist.length})`, Heart)}
+          {tabButton("cart", `Cart (${cartCount})`, ShoppingCart)}
+          {tabButton("settings", "Settings", Settings)}
+        </div>
+
+        <div>
+          {tab === "dashboard" && <div>
+            <h1 style={{ margin: "0 0 6px", fontSize: 24, fontWeight: 800 }}>My account</h1>
+            <p style={{ margin: "0 0 18px", color: "#77715F", fontSize: 13.5 }}>Manage your Savivah customer account.</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12 }}>
+              <StatCard label="Account" value="Customer" sub={user.emailVerified ? "Email verified" : "Email not verified"} icon={ShieldCheck} />
+              <StatCard label="Wishlist" value={wishlist.length} sub="Saved products" icon={Heart} />
+              <StatCard label="Cart" value={cartCount} sub="Items ready to checkout" icon={ShoppingCart} />
+            </div>
+            <div style={{ background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 18, marginTop: 16 }}>
+              <div style={{ fontWeight: 800, marginBottom: 12 }}>Quick checks</div>
+              <div style={{ display: "grid", gap: 9, fontSize: 13 }}>
+                <div>✓ Email: {user.emailVerified ? "Verified" : "Verification required"}</div>
+                <div>✓ Seller access: {sellerStatus === "none" ? "Not applied" : sellerStatus.replaceAll("_", " ")}</div>
+                <div>✓ Wishlist: {wishlist.length} saved item{wishlist.length === 1 ? "" : "s"}</div>
+              </div>
+            </div>
+          </div>}
+
+          {tab === "wishlist" && <div>
+            <h1 style={{ margin: "0 0 6px", fontSize: 24, fontWeight: 800 }}>Wishlist</h1>
+            <p style={{ margin: "0 0 18px", color: "#77715F", fontSize: 13.5 }}>Products you saved for later.</p>
+            {wishlist.length === 0 ? <EmptyState icon={Heart} title="Your wishlist is empty" message="Tap the heart on any product to save it here." actionLabel="Browse marketplace" onAction={() => setTab("dashboard")} /> :
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(190px,1fr))", gap: 12 }}>{wishlist.map((p) => <div key={p.id} style={{ background: "#fff", border: "1px solid #ECE8DD", borderRadius: 10, padding: 12 }}><div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 6 }}>{p.name}</div><div style={{ color: GOLD_DARK, fontWeight: 800, marginBottom: 10 }}>{money(p.price)}</div><div style={{ display: "flex", gap: 6 }}><button onClick={() => addToCart(p)} style={{ flex: 1, padding: "8px 6px", border: "none", borderRadius: 7, background: INK, color: "#fff", fontWeight: 700, cursor: "pointer" }}>Add to cart</button><button onClick={() => toggleWishlist(p)} style={{ width: 38, border: "1px solid #E4DFD0", background: "#fff", borderRadius: 7, cursor: "pointer" }}><Trash2 size={14} color="#B3261E" /></button></div></div>)}</div>}
+          </div>}
+
+          {tab === "cart" && <div><h1 style={{ margin: "0 0 6px", fontSize: 24, fontWeight: 800 }}>Your cart</h1><p style={{ color: "#77715F", fontSize: 13.5 }}>Use the cart button at the top to review and checkout.</p><button onClick={() => setTab("dashboard")} style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: GOLD, color: "#fff", fontWeight: 700, cursor: "pointer" }}>Continue shopping</button></div>}
+
+          {tab === "settings" && <div>
+            <h1 style={{ margin: "0 0 6px", fontSize: 24, fontWeight: 800 }}>Settings</h1>
+            <p style={{ margin: "0 0 18px", color: "#77715F", fontSize: 13.5 }}>Account details and seller access.</p>
+            <div style={{ background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 18, marginBottom: 14 }}>
+              <div style={{ fontWeight: 800, marginBottom: 12 }}>Customer details</div>
+              <div style={{ display: "grid", gap: 8, fontSize: 13.5 }}><div><b>Name:</b> {user.fullName}</div><div><b>Email:</b> {user.email}</div><div><b>Email status:</b> {user.emailVerified ? "Verified" : "Not verified"}</div></div>
+            </div>
+            <div style={{ background: "#fff", border: "1px solid #ECE8DD", borderRadius: 12, padding: 18 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}><Store size={17} color={GOLD_DARK} /><div style={{ fontWeight: 800 }}>Become a seller</div></div>
+              <div style={{ fontSize: 12.5, color: "#77715F", lineHeight: 1.5, marginBottom: 12 }}>Seller access requires an application, identification and permit details, verification, and the seller registration fee. Your customer account remains unchanged until approval.</div>
+              <div style={{ background: "#F4F1E8", padding: 10, borderRadius: 8, fontSize: 12, marginBottom: 12 }}>Current status: <b>{sellerStatus.replaceAll("_", " ")}</b></div>
+              {sellerStatus === "none" || sellerStatus === "rejected" ? <button onClick={onBecomeSeller} style={{ padding: "10px 16px", border: "none", borderRadius: 8, background: INK, color: "#fff", fontWeight: 700, cursor: "pointer" }}>Start seller application</button> : <div style={{ fontSize: 12.5, color: GOLD_DARK }}>Your seller application is already in progress.</div>}
+            </div>
+          </div>}
+        </div>
+      </div>
+      <style>{`@media (max-width: 760px){.savivah-dashboard-grid{grid-template-columns:1fr !important}}`}</style>
+    </div>
+  );
+}
+
+function SellerApplicationModal({ auth, apiFetch, notify, onClose }) {
+  const [form, setForm] = useState({ fullName: auth?.user?.fullName || "", email: auth?.user?.email || "", phoneNumber: "", identificationType: "national_id", identificationNumber: "", businessName: "", businessRegistrationNumber: "", productPermit: "" });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (e) => {
+    e.preventDefault(); setLoading(true); setError("");
+    try {
+      const result = await apiFetch("/seller/applications", { method: "POST", body: JSON.stringify(form) });
+      notify(result?.message || "Seller application submitted");
+      if (result?.redirectUrl) window.open(result.redirectUrl, "_blank");
+      onClose();
+    } catch (e) { setError(e.message); } finally { setLoading(false); }
+  };
+
+  return <div style={{ position: "fixed", inset: 0, zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: 14 }}><div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(20,18,12,.55)" }} /><div style={{ position: "relative", width: 520, maxWidth: "96vw", maxHeight: "92vh", overflowY: "auto", background: "#fff", borderRadius: 15, padding: 22 }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}><div style={{ fontSize: 19, fontWeight: 800 }}>Become a seller</div><button onClick={onClose} style={{ border: "none", background: "none", cursor: "pointer" }}><X size={20} /></button></div>
+    <p style={{ fontSize: 12.5, color: "#77715F", lineHeight: 1.5, marginTop: 0 }}>Complete your details. The seller registration fee is paid through Pesapal after the application is created.</p>
+    <form onSubmit={submit} style={{ display: "grid", gap: 10 }}>
+      <input placeholder="Full name" value={form.fullName} onChange={e => setForm({...form,fullName:e.target.value})} style={inputStyle} required />
+      <input type="email" placeholder="Email" value={form.email} onChange={e => setForm({...form,email:e.target.value})} style={inputStyle} required />
+      <input placeholder="Phone number" value={form.phoneNumber} onChange={e => setForm({...form,phoneNumber:e.target.value})} style={inputStyle} required />
+      <select value={form.identificationType} onChange={e => setForm({...form,identificationType:e.target.value})} style={inputStyle}><option value="national_id">National ID</option><option value="passport">Passport</option></select>
+      <input placeholder="Identification number" value={form.identificationNumber} onChange={e => setForm({...form,identificationNumber:e.target.value})} style={inputStyle} required />
+      <input placeholder="Business name" value={form.businessName} onChange={e => setForm({...form,businessName:e.target.value})} style={inputStyle} required />
+      <input placeholder="Business registration number (if applicable)" value={form.businessRegistrationNumber} onChange={e => setForm({...form,businessRegistrationNumber:e.target.value})} style={inputStyle} />
+      <input placeholder="Product permit / licence reference" value={form.productPermit} onChange={e => setForm({...form,productPermit:e.target.value})} style={inputStyle} required />
+      <div style={{ background: "#FBF1DA", borderRadius: 8, padding: 11, fontSize: 12, color: "#6E5A1A" }}><CreditCard size={14} style={{verticalAlign:"-2px",marginRight:5}} />Seller registration fee: amount will be confirmed by Savivah before Pesapal checkout.</div>
+      {error && <div style={{ color: "#B3261E", fontSize: 12.5 }}>{error}</div>}
+      <button disabled={loading} type="submit" style={{ padding: "11px 0", border: "none", borderRadius: 8, background: GOLD, color: "#fff", fontWeight: 800, cursor: "pointer" }}>{loading ? "Submitting..." : "Continue to seller payment"}</button>
+    </form>
+  </div></div>;
+}
 
 function EmptyState({ icon: Icon, title, message, actionLabel, onAction }) {
   return (
