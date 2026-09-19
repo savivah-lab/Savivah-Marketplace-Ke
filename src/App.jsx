@@ -357,11 +357,37 @@ function AuthModal({ onClose, onAuthed }) {
       const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = await res.json();
       if (!res.ok) {
-        if (mode === "login" && res.status === 403 && /verify/i.test(data?.detail || "")) {
-          setStep("verify");
-        }
-        throw new Error(data?.error || data?.detail || "Something went wrong");
-      }
+  if (
+    mode === "login" &&
+    res.status === 403 &&
+    /verify/i.test(
+      typeof data?.detail === "string"
+        ? data.detail
+        : JSON.stringify(data?.detail || "")
+    )
+  ) {
+    setStep("verify");
+  }
+
+  let message = data?.error || data?.detail || "Something went wrong";
+
+  // FastAPI/Pydantic validation errors are usually an array of objects.
+  if (Array.isArray(message)) {
+    message = message
+      .map((item) => {
+        const field = Array.isArray(item?.loc)
+          ? item.loc.filter((x) => x !== "body").join(".")
+          : "field";
+
+        return `${field}: ${item?.msg || "Invalid value"}`;
+      })
+      .join(" • ");
+  } else if (typeof message === "object") {
+    message = JSON.stringify(message);
+  }
+
+  throw new Error(message);
+}
       if (mode === "register" && data?.user && data.user.emailVerified === false) {
         setStep("verify");
         return;
