@@ -139,7 +139,7 @@ export default function SavivahApp() {
         </div>
       )}
 
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px 60px" }}>
+      <div style={{ width: "100%", maxWidth: 1400, margin: "0 auto", padding: "24px 28px 60px", boxSizing: "border-box" }}>
         {role === "customer" && (
           <CustomerView products={products} loading={loadingProducts} search={search} setSearch={setSearch}
             filters={filters} setFilters={setFilters} addToCart={addToCart} hasMore={hasMore} loadMore={loadMore}
@@ -446,26 +446,120 @@ function AuthModal({ onClose, onAuthed }) {
 }
 
 function Hero() {
+  const slides = [
+    { image: "/hero-1.jpg", title: "Shop Kenya's trusted marketplace", text: "Discover products from independent Kenyan sellers, with secure checkout and escrow protection." },
+    { image: "/hero-2.jpg", title: "Find products you can trust", text: "Browse verified sellers, compare products, and shop with confidence." },
+    { image: "/hero-3.jpg", title: "Support local sellers", text: "Shop from independent stores and help Kenyan businesses grow." },
+    { image: "/hero-4.jpg", title: "Your payment stays protected", text: "Your payment is held safely in escrow until delivery is confirmed." },
+  ];
+
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setIndex((current) => (current + 1) % slides.length);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [slides.length]);
+
+  const slide = slides[index];
+
   return (
     <div style={{
-      position: "relative", overflow: "hidden", borderRadius: 16, padding: "36px 28px",
-      background: `linear-gradient(135deg, ${INK} 0%, #2A2620 100%)`, marginBottom: 24,
+      position: "relative",
+      overflow: "hidden",
+      borderRadius: 16,
+      minHeight: 270,
+      marginBottom: 24,
+      background: "#211F1B",
     }}>
-      <div className="hero-blob" style={{
-        position: "absolute", top: -40, right: -30, width: 160, height: 160, borderRadius: "50%",
-        background: `radial-gradient(circle, ${GOLD}55 0%, transparent 70%)`, pointerEvents: "none",
+      {slides.map((item, i) => (
+        <div
+          key={item.image}
+          style={{
+            position: "absolute",
+            inset: 0,
+            backgroundImage: `url("${item.image}")`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            opacity: i === index ? 1 : 0,
+            transition: "opacity 900ms ease-in-out",
+          }}
+        />
+      ))}
+
+      <div style={{
+        position: "absolute",
+        inset: 0,
+        background: "linear-gradient(90deg, rgba(18,17,14,.88) 0%, rgba(18,17,14,.62) 45%, rgba(18,17,14,.20) 100%)",
       }} />
-      <div className="hero-blob-2" style={{
-        position: "absolute", bottom: -50, left: 60, width: 140, height: 140, borderRadius: "50%",
-        background: `radial-gradient(circle, ${GOLD}33 0%, transparent 70%)`, pointerEvents: "none",
-      }} />
-      <div style={{ position: "relative" }}>
-        <h1 className="hero-shimmer-text" style={{ fontSize: 26, fontWeight: 800, margin: "0 0 8px" }}>
-          Shop Kenya's trusted marketplace
-        </h1>
-        <p style={{ color: "#D8D3C6", fontSize: 14, margin: 0, maxWidth: 480, lineHeight: 1.5 }}>
-          Every store here is independently owned. Your payment is held safely in escrow until delivery is confirmed — so you shop with confidence.
-        </p>
+
+      <div style={{
+        position: "relative",
+        zIndex: 2,
+        minHeight: 270,
+        padding: "42px 42px 52px",
+        boxSizing: "border-box",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+        color: "#fff",
+      }}>
+        <div style={{ maxWidth: 570 }}>
+          <div style={{ color: "#E0B52E", fontSize: 11, fontWeight: 800, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 9 }}>
+            SAVIVAH MARKETPLACE
+          </div>
+          <h1 className="hero-shimmer-text" style={{ fontSize: 29, fontWeight: 800, lineHeight: 1.15, margin: "0 0 10px" }}>
+            {slide.title}
+          </h1>
+          <p style={{ color: "#E4E0D6", fontSize: 14, margin: 0, maxWidth: 520, lineHeight: 1.55 }}>
+            {slide.text}
+          </p>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        aria-label="Previous hero slide"
+        onClick={() => setIndex((current) => (current - 1 + slides.length) % slides.length)}
+        style={{
+          position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", zIndex: 3,
+          width: 38, height: 38, borderRadius: "50%", border: "1px solid rgba(255,255,255,.35)",
+          background: "rgba(0,0,0,.35)", color: "#fff", cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}
+      >
+        <ChevronLeft size={20} />
+      </button>
+
+      <button
+        type="button"
+        aria-label="Next hero slide"
+        onClick={() => setIndex((current) => (current + 1) % slides.length)}
+        style={{
+          position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", zIndex: 3,
+          width: 38, height: 38, borderRadius: "50%", border: "1px solid rgba(255,255,255,.35)",
+          background: "rgba(0,0,0,.35)", color: "#fff", cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}
+      >
+        <ChevronRight size={20} />
+      </button>
+
+      <div style={{ position: "absolute", bottom: 15, left: 0, right: 0, zIndex: 3, display: "flex", justifyContent: "center", gap: 7 }}>
+        {slides.map((item, i) => (
+          <button
+            key={item.image}
+            type="button"
+            aria-label={`Go to hero slide ${i + 1}`}
+            onClick={() => setIndex(i)}
+            style={{
+              width: i === index ? 24 : 8, height: 8, padding: 0, border: "none", borderRadius: 999,
+              background: i === index ? "#E0B52E" : "rgba(255,255,255,.65)", cursor: "pointer",
+              transition: "all 250ms ease",
+            }}
+          />
+        ))}
       </div>
     </div>
   );
