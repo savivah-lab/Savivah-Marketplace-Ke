@@ -1211,7 +1211,22 @@ function CustomerDashboard({ auth, tab, setTab, wishlist, toggleWishlist, addToC
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}><Store size={17} color={GOLD_DARK} /><div style={{ fontWeight: 800 }}>Become a seller</div></div>
               <div style={{ fontSize: 12.5, color: "#77715F", lineHeight: 1.5, marginBottom: 12 }}>Seller access requires an application, identification and permit details, verification, and the seller registration fee. Your customer account remains unchanged until approval.</div>
               <div style={{ background: "#F4F1E8", padding: 10, borderRadius: 8, fontSize: 12, marginBottom: 12 }}>Current status: <b>{sellerStatus.replaceAll("_", " ")}</b></div>
-              {sellerStatus === "none" || sellerStatus === "rejected" ? <button onClick={onBecomeSeller} style={{ padding: "10px 16px", border: "none", borderRadius: 8, background: INK, color: "#fff", fontWeight: 700, cursor: "pointer" }}>Start seller application</button> : <div style={{ fontSize: 12.5, color: GOLD_DARK }}>Your seller application is already in progress.</div>}
+                            {sellerStatus === "none" || sellerStatus === "rejected" ? (
+                <button onClick={onBecomeSeller} style={{ padding: "10px 16px", border: "none", borderRadius: 8, background: INK, color: "#fff", fontWeight: 700, cursor: "pointer" }}>
+                  Start seller application
+                </button>
+              ) : sellerStatus === "pending_payment" ? (
+                <>
+                  <div style={{ fontSize: 12.5, color: GOLD_DARK, marginBottom: 10 }}>
+                    Your application is saved but the registration fee hasn't been paid yet.
+                  </div>
+                  <button onClick={onBecomeSeller} style={{ padding: "10px 16px", border: "none", borderRadius: 8, background: GOLD, color: "#fff", fontWeight: 700, cursor: "pointer" }}>
+                    Resume application &amp; pay fee
+                  </button>
+                </>
+              ) : (
+                <div style={{ fontSize: 12.5, color: GOLD_DARK }}>Your seller application is already in progress.</div>
+              )}
             </div>
           </div>}
         </div>
