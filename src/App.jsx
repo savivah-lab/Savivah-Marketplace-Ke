@@ -88,7 +88,7 @@ export default function SavivahApp() {
     setTimeout(() => setToast(null), 3000);
   }, []);
 
-  const apiFetch = useCallback(async (path, opts = {}) => {
+    const apiFetch = useCallback(async (path, opts = {}) => {
     const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
     if (auth?.token) headers.Authorization = `Bearer ${auth.token}`;
     const res = await fetch(`${API_BASE}${path}`, { ...opts, headers });
@@ -97,6 +97,27 @@ export default function SavivahApp() {
     if (!res.ok) throw new Error(data?.error || data?.detail || `Request failed (${res.status})`);
     return data;
   }, [auth]);
+
+  const refreshUser = useCallback(async () => {
+    if (!auth?.token) return;
+    try {
+      const freshUser = await apiFetch("/auth/me");
+      setAuth((a) => (a ? { ...a, user: freshUser } : a));
+    } catch {
+      // token expired or invalid — leave as-is, normal login flow will catch it
+    }
+  }, [auth?.token, apiFetch]);
+
+  useEffect(() => {
+    refreshUser();
+    const onVisible = () => { if (document.visibilityState === "visible") refreshUser(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [refreshUser]);
 
   const toggleWishlist = (product) => {
     setWishlist((items) => {
