@@ -855,37 +855,44 @@ function CartDrawer({ cart, onClose, updateQty, removeFromCart, total, auth, api
   const [placing, setPlacing] = useState(false);
   const commission = total * 0.10;
 
-  const checkout = async () => {
-    if (!auth) return requireLogin();
-    if (!address.trim()) return notify("Add a delivery address first");
-    setPlacing(true);
-    try {
-      const byStore = {};
-      cart.forEach((item) => {
-        if (!byStore[item.store_id]) byStore[item.store_id] = [];
-        byStore[item.store_id].push(item);
+const checkout = async () => {
+  if (!auth) return requireLogin();
+  if (!address.trim()) return notify("Add a delivery address first");
+
+  const payTab = window.open("", "_blank"); // opened synchronously, inside the click handler
+  setPlacing(true);
+  try {
+    const byStore = {};
+    cart.forEach((item) => {
+      if (!byStore[item.store_id]) byStore[item.store_id] = [];
+      byStore[item.store_id].push(item);
+    });
+    let lastRedirect = null;
+    for (const [storeId, items] of Object.entries(byStore)) {
+      const result = await apiFetch("/checkout", {
+        method: "POST",
+        body: JSON.stringify({
+          storeId,
+          items: items.map((i) => ({ productId: i.id, quantity: i.qty })),
+          deliveryAddress: address,
+        }),
       });
-      let lastRedirect = null;
-      for (const [storeId, items] of Object.entries(byStore)) {
-        const result = await apiFetch("/checkout", {
-          method: "POST",
-          body: JSON.stringify({
-            storeId,
-            items: items.map((i) => ({ productId: i.id, quantity: i.qty })),
-            deliveryAddress: address,
-          }),
-        });
-        lastRedirect = result.redirectUrl;
-      }
-      notify("Order created — redirecting to Pesapal to pay");
-      onOrderPlaced();
-      if (lastRedirect) window.open(lastRedirect, "_blank");
-    } catch (e) {
-      notify(e.message);
-    } finally {
-      setPlacing(false);
+      lastRedirect = result.redirectUrl;
     }
-  };
+    notify("Order created — redirecting to Pesapal to pay");
+    onOrderPlaced();
+    if (lastRedirect && payTab) {
+      payTab.location.href = lastRedirect;
+    } else if (payTab) {
+      payTab.close();
+    }
+  } catch (e) {
+    if (payTab) payTab.close();
+    notify(e.message);
+  } finally {
+    setPlacing(false);
+  }
+};
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", justifyContent: "flex-end" }}>
