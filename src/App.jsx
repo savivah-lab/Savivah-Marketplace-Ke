@@ -78,10 +78,11 @@ export default function SavivahApp() {
     localStorage.setItem("savivah_wishlist", JSON.stringify(wishlist));
   }, [wishlist]);
 
-  useEffect(() => {
-    if (auth?.user?.role === "seller") setRole("seller");
-    else if (role === "seller") setRole("customer");
-  }, [auth, role]);
+useEffect(() => {
+  if (auth?.user?.role !== "seller" && role === "seller") {
+    setRole("customer");
+  }
+}, [auth?.user?.role]);
 
   const notify = useCallback((msg) => {
     setToast(msg);
