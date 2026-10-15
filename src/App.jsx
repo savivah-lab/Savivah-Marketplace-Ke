@@ -554,7 +554,7 @@ function AuthModal({ onClose, onAuthed }) {
     }
     setLoading(true); setError(""); setInfo("");
     try {
-      const res = await fetch(`${API_BASE}/auth/reset-password`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: form.email, code, newPassword: form.password }) });
+      const res = await fetch(`${API_BASE}/api/reset`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: form.email, code, newPassword: form.password }) });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(parseError(data, "Could not reset password"));
       setMode("login"); setStep("form"); setCode(""); setConfirmPassword("");
