@@ -422,13 +422,42 @@ function PasswordInput({ value, onChange, placeholder }) {
 
 function AuthModal({ onClose, onAuthed }) {
   const [mode, setMode] = useState("login");
-  const [step, setStep] = useState("form");
+  const [step, setStep] = useState("form"); // form | verify | forgot | reset
   const [form, setForm] = useState({ fullName: "", email: "", phoneNumber: "", password: "" });
   const [confirmPassword, setConfirmPassword] = useState("");
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
   const googleBtnRef = useRef(null);
+
+  // Turns FastAPI/Pydantic error shapes into a readable string
+  const parseError = (data, fallback) => {
+    let message = data?.error || data?.detail || fallback;
+    if (Array.isArray(message)) {
+      message = message
+        .map((item) => {
+          const field = Array.isArray(item?.loc) ? item.loc.filter((x) => x !== "body").join(".") : "field";
+          return `${field}: ${item?.msg || "Invalid value"}`;
+        })
+        .join(" • ");
+    } else if (typeof message === "object") {
+      message = JSON.stringify(message);
+    }
+    return message;
+  };
+
+  const goToLogin = () => {
+    setMode("login"); setStep("form"); setError(""); setInfo("");
+    setCode(""); setConfirmPassword("");
+    setForm((f) => ({ ...f, password: "" }));
+  };
+
+  const startForgot = () => {
+    setStep("forgot"); setError(""); setInfo("");
+    setCode(""); setConfirmPassword("");
+    setForm((f) => ({ ...f, password: "" }));
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -436,7 +465,7 @@ function AuthModal({ onClose, onAuthed }) {
       setError("Passwords do not match");
       return;
     }
-    setLoading(true); setError("");
+    setLoading(true); setError(""); setInfo("");
     try {
       const path = mode === "login" ? "/auth/login" : "/auth/register";
       const body = mode === "login" ? { email: form.email, password: form.password } : { ...form, role: "customer" };
@@ -502,6 +531,38 @@ function AuthModal({ onClose, onAuthed }) {
     } catch (e) { setError(e.message); } finally { setLoading(false); }
   };
 
+  // Step 1 of password reset: ask the backend to email a 6-digit code
+  const requestReset = async (e) => {
+    if (e) e.preventDefault();
+    setLoading(true); setError(""); setInfo("");
+    try {
+      const res = await fetch(`${API_BASE}/auth/forgot-password`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: form.email }) });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(parseError(data, "Could not send reset code"));
+      setStep("reset");
+      setCode("");
+      setInfo(`If an account exists for ${form.email}, we've sent a 6-digit reset code.`);
+    } catch (e) { setError(e.message); } finally { setLoading(false); }
+  };
+
+  // Step 2 of password reset: code + new password
+  const resetPassword = async (e) => {
+    e.preventDefault();
+    if (form.password !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+    setLoading(true); setError(""); setInfo("");
+    try {
+      const res = await fetch(`${API_BASE}/auth/reset-password`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: form.email, code, newPassword: form.password }) });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(parseError(data, "Could not reset password"));
+      setMode("login"); setStep("form"); setCode(""); setConfirmPassword("");
+      setForm((f) => ({ ...f, password: "" }));
+      setInfo("Password updated. Log in with your new password.");
+    } catch (e) { setError(e.message); } finally { setLoading(false); }
+  };
+
   const handleGoogleCredential = useCallback(async (response) => {
     setError(""); setLoading(true);
     try {
@@ -523,14 +584,23 @@ function AuthModal({ onClose, onAuthed }) {
     else { const script = document.createElement("script"); script.src = "https://accounts.google.com/gsi/client"; script.async = true; script.onload = renderButton; document.body.appendChild(script); }
   }, [handleGoogleCredential, step]);
 
+  const title =
+    step === "verify" ? "Verify your email"
+    : step === "forgot" ? "Reset your password"
+    : step === "reset" ? "Choose a new password"
+    : mode === "login" ? "Log in" : "Create an account";
+
+  const linkBtn = { background: "none", border: "none", color: GOLD_DARK, fontWeight: 700, cursor: "pointer", fontSize: 12.5, padding: 0 };
+
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(20,18,12,0.4)" }} />
       <div style={{ position: "relative", width: 380, maxWidth: "90vw", background: "#fff", borderRadius: 14, padding: 24 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <div style={{ fontWeight: 800, fontSize: 17 }}>{step === "verify" ? "Verify your email" : mode === "login" ? "Log in" : "Create an account"}</div>
+          <div style={{ fontWeight: 800, fontSize: 17 }}>{title}</div>
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={20} /></button>
         </div>
+
         {step === "verify" ? (
           <form onSubmit={verify} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ background: "#FBF1DA", borderRadius: 8, padding: 12, fontSize: 12.5, color: "#6E5A1A" }}>We sent a 6-digit verification code to <b>{form.email}</b>.</div>
@@ -539,9 +609,29 @@ function AuthModal({ onClose, onAuthed }) {
             <button disabled={loading || code.length !== 6} style={{ padding: "11px 0", borderRadius: 8, border: "none", background: GOLD, color: "#fff", fontWeight: 700, cursor: "pointer" }}>{loading ? "Verifying..." : "Verify email"}</button>
             <button type="button" onClick={resend} disabled={loading} style={{ padding: "9px 0", borderRadius: 8, border: "1px solid #E4DFD0", background: "#fff", fontWeight: 700, cursor: "pointer" }}>Resend code</button>
           </form>
+        ) : step === "forgot" ? (
+          <form onSubmit={requestReset} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ background: "#FBF1DA", borderRadius: 8, padding: 12, fontSize: 12.5, color: "#6E5A1A" }}>Enter the email you registered with and we'll send you a 6-digit code to reset your password.</div>
+            <input type="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} style={inputStyle} required />
+            {error && <div style={{ fontSize: 12.5, color: "#B3261E" }}>{error}</div>}
+            <button type="submit" disabled={loading} style={{ padding: "11px 0", borderRadius: 8, border: "none", background: GOLD, color: "#fff", fontWeight: 700, cursor: "pointer" }}>{loading ? "Sending..." : "Send reset code"}</button>
+            <div style={{ textAlign: "center" }}><button type="button" onClick={goToLogin} style={linkBtn}>Back to log in</button></div>
+          </form>
+        ) : step === "reset" ? (
+          <form onSubmit={resetPassword} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {info && <div style={{ background: "#E9F5EA", borderRadius: 8, padding: 12, fontSize: 12.5, color: "#2E7D32" }}>{info}</div>}
+            <input inputMode="numeric" maxLength={6} placeholder="6-digit code" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} style={{ ...inputStyle, textAlign: "center", letterSpacing: 6, fontSize: 20 }} required />
+            <PasswordInput placeholder="New password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+            <PasswordInput placeholder="Repeat new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+            {error && <div style={{ fontSize: 12.5, color: "#B3261E" }}>{error}</div>}
+            <button type="submit" disabled={loading || code.length !== 6} style={{ padding: "11px 0", borderRadius: 8, border: "none", background: GOLD, color: "#fff", fontWeight: 700, cursor: "pointer" }}>{loading ? "Updating..." : "Reset password"}</button>
+            <button type="button" onClick={() => requestReset()} disabled={loading} style={{ padding: "9px 0", borderRadius: 8, border: "1px solid #E4DFD0", background: "#fff", fontWeight: 700, cursor: "pointer" }}>Resend code</button>
+            <div style={{ textAlign: "center" }}><button type="button" onClick={goToLogin} style={linkBtn}>Back to log in</button></div>
+          </form>
         ) : (
           <>
             {GOOGLE_CLIENT_ID && <><div ref={googleBtnRef} style={{ display: "flex", justifyContent: "center", marginBottom: 14 }} /><div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0 16px", color: "#9a9484", fontSize: 12 }}><div style={{ flex: 1, height: 1, background: "#ECE8DD" }} />or continue with email<div style={{ flex: 1, height: 1, background: "#ECE8DD" }} /></div></>}
+            {info && <div style={{ background: "#E9F5EA", borderRadius: 8, padding: 12, fontSize: 12.5, color: "#2E7D32", marginBottom: 12 }}>{info}</div>}
             <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {mode === "register" && <><input placeholder="Full name" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} style={inputStyle} required /><input placeholder="Phone number (07...)" value={form.phoneNumber} onChange={(e) => setForm({ ...form, phoneNumber: e.target.value })} style={inputStyle} required /></>}
               <input type="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} style={inputStyle} required />
@@ -557,10 +647,15 @@ function AuthModal({ onClose, onAuthed }) {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                 />
               )}
+              {mode === "login" && (
+                <div style={{ textAlign: "right", marginTop: -4 }}>
+                  <button type="button" onClick={startForgot} style={linkBtn}>Forgot password?</button>
+                </div>
+              )}
               {error && <div style={{ fontSize: 12.5, color: "#B3261E" }}>{error}</div>}
               <button type="submit" disabled={loading} style={{ padding: "11px 0", borderRadius: 8, border: "none", background: GOLD, color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>{loading ? <Loader2 size={15} className="spin" /> : mode === "login" ? <LogIn size={15} /> : <UserPlus size={15} />}{mode === "login" ? "Log in" : "Create account"}</button>
             </form>
-            <div style={{ textAlign: "center", marginTop: 14, fontSize: 12.5, color: "#77715f" }}>{mode === "login" ? "New to Savivah? " : "Already have an account? "}<button onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); setConfirmPassword(""); }} style={{ background: "none", border: "none", color: GOLD_DARK, fontWeight: 700, cursor: "pointer" }}>{mode === "login" ? "Create one" : "Log in"}</button></div>
+            <div style={{ textAlign: "center", marginTop: 14, fontSize: 12.5, color: "#77715f" }}>{mode === "login" ? "New to Savivah? " : "Already have an account? "}<button onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); setInfo(""); setConfirmPassword(""); }} style={{ background: "none", border: "none", color: GOLD_DARK, fontWeight: 700, cursor: "pointer" }}>{mode === "login" ? "Create one" : "Log in"}</button></div>
           </>
         )}
       </div>
