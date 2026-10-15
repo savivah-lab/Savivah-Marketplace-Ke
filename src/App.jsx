@@ -536,7 +536,7 @@ function AuthModal({ onClose, onAuthed }) {
     if (e) e.preventDefault();
     setLoading(true); setError(""); setInfo("");
     try {
-      const res = await fetch(`${API_BASE}/auth/forgot-password`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: form.email }) });
+      const res = await fetch(`${API_BASE}/api/reset`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: form.email, password: form.password }) });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(parseError(data, "Could not send reset code"));
       setStep("reset");
