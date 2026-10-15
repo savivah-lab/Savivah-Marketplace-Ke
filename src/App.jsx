@@ -3,7 +3,7 @@ import {
   ShoppingCart, Store, Package, Plus, Trash2, X, User, Heart, Settings, Home, ShieldCheck, CreditCard, KeyRound, Check,
   CheckCircle2, Clock, Truck, RotateCcw, TrendingUp, LayoutGrid,
   Wallet, Search, LogIn, LogOut, UserPlus, Loader2, AlertTriangle, ChevronDown,
-  ChevronLeft, ChevronRight, SlidersHorizontal, BadgeCheck
+  ChevronLeft, ChevronRight, SlidersHorizontal, BadgeCheck, Eye, EyeOff
 } from "lucide-react";
 import { useProductPagination } from "./hooks/useProductPagination";
 
@@ -47,6 +47,7 @@ export default function SavivahApp() {
   const [showCart, setShowCart] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
   const [showThankYou, setShowThankYou] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({ category: "", minPrice: "", maxPrice: "", inStock: false, verifiedSeller: false, sort: "relevance" });
   const [toast, setToast] = useState(null);
@@ -152,7 +153,7 @@ useEffect(() => {
   return (
     <div style={{ fontFamily: "'Segoe UI', Arial, sans-serif", background: "#FAF9F5", minHeight: "100vh", color: INK }}>
       <TopBar role={role} setRole={setRole} cartCount={cartCount} onCartClick={() => setShowCart(true)}
-        auth={auth} onLoginClick={() => setShowAuth(true)} onLogout={logout} customerTab={customerTab} setCustomerTab={setCustomerTab} />
+        auth={auth} onLoginClick={() => setShowAuth(true)} onLogout={() => setShowLogoutConfirm(true)} customerTab={customerTab} setCustomerTab={setCustomerTab} />
 
       {toast && <Toast msg={toast} />}
       {apiDown && (
@@ -184,6 +185,13 @@ useEffect(() => {
       )}
 
       {showThankYou && <ThankYouModal onClose={() => setShowThankYou(false)} />}
+
+      {showLogoutConfirm && (
+        <LogoutConfirmModal
+          onCancel={() => setShowLogoutConfirm(false)}
+          onConfirm={() => { setShowLogoutConfirm(false); logout(); }}
+        />
+      )}
 
       {showSellerApplication && (
         <SellerApplicationModal
@@ -237,6 +245,31 @@ function ThankYouModal({ onClose }) {
           color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
           Continue shopping
         </button>
+      </div>
+    </div>
+  );
+}
+
+function LogoutConfirmModal({ onCancel, onConfirm }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 75, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div onClick={onCancel} style={{ position: "absolute", inset: 0, background: "rgba(20,18,12,0.45)" }} />
+      <div style={{ position: "relative", width: 340, maxWidth: "90vw", background: "#fff", borderRadius: 16, padding: "28px 24px", textAlign: "center" }}>
+        <div style={{ width: 52, height: 52, borderRadius: "50%", background: "#FBF1DA", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
+          <LogOut size={24} color={GOLD_DARK} />
+        </div>
+        <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 6 }}>Log out?</div>
+        <p style={{ fontSize: 13.5, color: "#77715f", lineHeight: 1.5, margin: "0 0 20px" }}>
+          Are you sure you want to log out of your account?
+        </p>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={onCancel} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "1px solid #E4DFD0", background: "#fff", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>
+            Cancel
+          </button>
+          <button onClick={onConfirm} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: INK, color: "#fff", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>
+            Yes, log out
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -362,17 +395,48 @@ function TopBar({ role, setRole, cartCount, onCartClick, auth, onLoginClick, onL
   );
 }
 
+function PasswordInput({ value, onChange, placeholder }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div style={{ position: "relative" }}>
+      <input
+        type={show ? "text" : "password"}
+        placeholder={placeholder}
+        value={value}
+        onChange={onChange}
+        style={{ ...inputStyle, width: "100%", paddingRight: 40 }}
+        required
+      />
+      <button
+        type="button"
+        onClick={() => setShow((s) => !s)}
+        aria-label={show ? "Hide password" : "Show password"}
+        style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none",
+          border: "none", cursor: "pointer", padding: 4, display: "flex", color: "#77715f" }}
+      >
+        {show ? <EyeOff size={16} /> : <Eye size={16} />}
+      </button>
+    </div>
+  );
+}
+
 function AuthModal({ onClose, onAuthed }) {
   const [mode, setMode] = useState("login");
   const [step, setStep] = useState("form");
   const [form, setForm] = useState({ fullName: "", email: "", phoneNumber: "", password: "" });
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const googleBtnRef = useRef(null);
 
   const submit = async (e) => {
-    e.preventDefault(); setLoading(true); setError("");
+    e.preventDefault();
+    if (mode === "register" && form.password !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+    setLoading(true); setError("");
     try {
       const path = mode === "login" ? "/auth/login" : "/auth/register";
       const body = mode === "login" ? { email: form.email, password: form.password } : { ...form, role: "customer" };
@@ -481,11 +545,22 @@ function AuthModal({ onClose, onAuthed }) {
             <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {mode === "register" && <><input placeholder="Full name" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} style={inputStyle} required /><input placeholder="Phone number (07...)" value={form.phoneNumber} onChange={(e) => setForm({ ...form, phoneNumber: e.target.value })} style={inputStyle} required /></>}
               <input type="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} style={inputStyle} required />
-              <input type="password" placeholder="Password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} style={inputStyle} required />
+              <PasswordInput
+                placeholder="Password"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+              />
+              {mode === "register" && (
+                <PasswordInput
+                  placeholder="Repeat password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                />
+              )}
               {error && <div style={{ fontSize: 12.5, color: "#B3261E" }}>{error}</div>}
               <button type="submit" disabled={loading} style={{ padding: "11px 0", borderRadius: 8, border: "none", background: GOLD, color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>{loading ? <Loader2 size={15} className="spin" /> : mode === "login" ? <LogIn size={15} /> : <UserPlus size={15} />}{mode === "login" ? "Log in" : "Create account"}</button>
             </form>
-            <div style={{ textAlign: "center", marginTop: 14, fontSize: 12.5, color: "#77715f" }}>{mode === "login" ? "New to Savivah? " : "Already have an account? "}<button onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }} style={{ background: "none", border: "none", color: GOLD_DARK, fontWeight: 700, cursor: "pointer" }}>{mode === "login" ? "Create one" : "Log in"}</button></div>
+            <div style={{ textAlign: "center", marginTop: 14, fontSize: 12.5, color: "#77715f" }}>{mode === "login" ? "New to Savivah? " : "Already have an account? "}<button onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); setConfirmPassword(""); }} style={{ background: "none", border: "none", color: GOLD_DARK, fontWeight: 700, cursor: "pointer" }}>{mode === "login" ? "Create one" : "Log in"}</button></div>
           </>
         )}
       </div>
