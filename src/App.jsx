@@ -420,10 +420,16 @@ function PasswordInput({ value, onChange, placeholder }) {
   );
 }
 
+
 function AuthModal({ onClose, onAuthed }) {
   const [mode, setMode] = useState("login");
-  const [step, setStep] = useState("form"); // form | verify | forgot | reset
-  const [form, setForm] = useState({ fullName: "", email: "", phoneNumber: "", password: "" });
+  const [step, setStep] = useState("form");
+  const [form, setForm] = useState({
+    fullName: "",
+    email: "",
+    phoneNumber: "",
+    password: ""
+  });
   const [confirmPassword, setConfirmPassword] = useState("");
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
@@ -431,215 +437,657 @@ function AuthModal({ onClose, onAuthed }) {
   const [info, setInfo] = useState("");
   const googleBtnRef = useRef(null);
 
-  // Turns FastAPI/Pydantic error shapes into a readable string
   const parseError = (data, fallback) => {
     let message = data?.error || data?.detail || fallback;
+
     if (Array.isArray(message)) {
-      message = message
-        .map((item) => {
-          const field = Array.isArray(item?.loc) ? item.loc.filter((x) => x !== "body").join(".") : "field";
-          return `${field}: ${item?.msg || "Invalid value"}`;
-        })
-        .join(" • ");
-    } else if (typeof message === "object") {
-      message = JSON.stringify(message);
-    }
-    return message;
-  };
-
-  const goToLogin = () => {
-    setMode("login"); setStep("form"); setError(""); setInfo("");
-    setCode(""); setConfirmPassword("");
-    setForm((f) => ({ ...f, password: "" }));
-  };
-
-  const startForgot = () => {
-    setStep("forgot"); setError(""); setInfo("");
-    setCode(""); setConfirmPassword("");
-    setForm((f) => ({ ...f, password: "" }));
-  };
-
-  const submit = async (e) => {
-    e.preventDefault();
-    if (mode === "register" && form.password !== confirmPassword) {
-      setError("Passwords do not match");
-      return;
-    }
-    setLoading(true); setError(""); setInfo("");
-    try {
-      const path = mode === "login" ? "/auth/login" : "/auth/register";
-      const body = mode === "login" ? { email: form.email, password: form.password } : { ...form, role: "customer" };
-      const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const data = await res.json();
-      if (!res.ok) {
-  if (
-    mode === "login" &&
-    res.status === 403 &&
-    /verify/i.test(
-      typeof data?.detail === "string"
-        ? data.detail
-        : JSON.stringify(data?.detail || "")
-    )
-  ) {
-    setStep("verify");
-  }
-
-  let message = data?.error || data?.detail || "Something went wrong";
-
-  // FastAPI/Pydantic validation errors are usually an array of objects.
-  if (Array.isArray(message)) {
-    message = message
-      .map((item) => {
+      message = message.map((item) => {
         const field = Array.isArray(item?.loc)
           ? item.loc.filter((x) => x !== "body").join(".")
           : "field";
 
         return `${field}: ${item?.msg || "Invalid value"}`;
-      })
-      .join(" • ");
-  } else if (typeof message === "object") {
-    message = JSON.stringify(message);
-  }
+      }).join(" • ");
+    } else if (typeof message === "object" && message !== null) {
+      message = JSON.stringify(message);
+    }
 
-  throw new Error(message);
-}
-      if (mode === "register" && data?.user && data.user.emailVerified === false) {
+    return typeof message === "string" ? message : fallback;
+  };
+
+  const post = async (path, body, fallback) => {
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      throw new Error(parseError(data, fallback));
+    }
+
+    return data;
+  };
+
+  const goToLogin = () => {
+    setMode("login");
+    setStep("form");
+    setError("");
+    setInfo("");
+    setCode("");
+    setConfirmPassword("");
+    setForm((f) => ({ ...f, password: "" }));
+  };
+
+  const startForgot = () => {
+    setStep("forgot");
+    setError("");
+    setInfo("");
+    setCode("");
+    setConfirmPassword("");
+    setForm((f) => ({ ...f, password: "" }));
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+
+    if (mode === "register" && form.password !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setInfo("");
+
+    try {
+      const path = mode === "login"
+        ? "/auth/login"
+        : "/auth/register";
+
+      const body = mode === "login"
+        ? {
+            email: form.email.trim(),
+            password: form.password
+          }
+        : {
+            ...form,
+            email: form.email.trim(),
+            role: "customer"
+          };
+
+      const data = await post(
+        path,
+        body,
+        "Something went wrong"
+      );
+
+      if (
+        mode === "register" &&
+        data?.user?.emailVerified === false
+      ) {
         setStep("verify");
+        setInfo("Your account was created. Please verify your email.");
         return;
       }
+
       onAuthed(data);
-    } catch (e) { setError(e.message); } finally { setLoading(false); }
+
+    } catch (e) {
+      if (
+        mode === "login" &&
+        /verify/i.test(e.message)
+      ) {
+        setStep("verify");
+      }
+
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const verify = async (e) => {
-    e.preventDefault(); setLoading(true); setError("");
+    e.preventDefault();
+
+    if (code.length !== 6) {
+      setError("Enter the complete 6-digit verification code.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setInfo("");
+
     try {
-      const res = await fetch(`${API_BASE}/auth/verify-email`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: form.email, code }) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || data?.detail || "Invalid verification code");
+      const data = await post(
+        "/auth/verify-email",
+        {
+          email: form.email.trim(),
+          code: code.trim()
+        },
+        "Invalid verification code"
+      );
+
       onAuthed(data);
-    } catch (e) { setError(e.message); } finally { setLoading(false); }
+
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const resend = async () => {
-    setLoading(true); setError("");
+    setLoading(true);
+    setError("");
+    setInfo("");
+
     try {
-      const res = await fetch(`${API_BASE}/auth/resend-verification`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: form.email }) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || data?.detail || "Could not resend code");
-      setError("");
-    } catch (e) { setError(e.message); } finally { setLoading(false); }
+      const data = await post(
+        "/auth/resend-verification",
+        { email: form.email.trim() },
+        "Could not resend verification code"
+      );
+
+      setInfo(
+        data?.message ||
+        "A new verification code has been sent to your email."
+      );
+
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Step 1 of password reset: ask the backend to email a 6-digit code
+  // Step 1: Request a password-reset verification code.
   const requestReset = async (e) => {
     if (e) e.preventDefault();
-    setLoading(true); setError(""); setInfo("");
+
+    setLoading(true);
+    setError("");
+    setInfo("");
+
     try {
-      const res = await fetch(`${API_BASE}/reset`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: form.email, password: form.password }) });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(parseError(data, "Could not send reset code"));
-      setStep("reset");
+      const data = await post(
+        "/reset",
+        { email: form.email.trim() },
+        "Could not send password-reset code"
+      );
+
       setCode("");
-      setInfo(`If an account exists for ${form.email}, we've sent a 6-digit reset code.`);
-    } catch (e) { setError(e.message); } finally { setLoading(false); }
+      setForm((f) => ({ ...f, password: "" }));
+      setConfirmPassword("");
+      setStep("reset");
+
+      setInfo(
+        data?.message ||
+        "A password-reset code has been sent to your email."
+      );
+
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Step 2 of password reset: code + new password
+  // Step 2: Submit the code and the new password.
   const resetPassword = async (e) => {
     e.preventDefault();
+
+    if (code.length !== 6) {
+      setError("Enter the complete 6-digit reset code.");
+      return;
+    }
+
     if (form.password !== confirmPassword) {
       setError("Passwords do not match");
       return;
     }
-    setLoading(true); setError(""); setInfo("");
+
+    setLoading(true);
+    setError("");
+    setInfo("");
+
     try {
-      const res = await fetch(`${API_BASE}/reset`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: form.email, code, newPassword: form.password }) });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(parseError(data, "Could not reset password"));
-      setMode("login"); setStep("form"); setCode(""); setConfirmPassword("");
+      await post(
+        "/reset",
+        {
+          email: form.email.trim(),
+          code: code.trim(),
+          newPassword: form.password
+        },
+        "Could not reset password"
+      );
+
+      setMode("login");
+      setStep("form");
+      setCode("");
+      setConfirmPassword("");
       setForm((f) => ({ ...f, password: "" }));
-      setInfo("Password updated. Log in with your new password.");
-    } catch (e) { setError(e.message); } finally { setLoading(false); }
+
+      setInfo(
+        "Password updated successfully. Please log in with your new password."
+      );
+
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleGoogleCredential = useCallback(async (response) => {
-    setError(""); setLoading(true);
+    setError("");
+    setLoading(true);
+
     try {
-      const res = await fetch(`${API_BASE}/auth/google`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken: response.credential, role: "customer" }) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || data?.detail || "Google sign-in failed");
+      const data = await post(
+        "/auth/google",
+        {
+          idToken: response.credential,
+          role: "customer"
+        },
+        "Google sign-in failed"
+      );
+
       onAuthed(data);
-    } catch (e) { setError(e.message); } finally { setLoading(false); }
+
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
   }, [onAuthed]);
 
   useEffect(() => {
     if (!GOOGLE_CLIENT_ID || step !== "form") return;
+
     const renderButton = () => {
       if (!window.google || !googleBtnRef.current) return;
-      window.google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleGoogleCredential });
-      window.google.accounts.id.renderButton(googleBtnRef.current, { theme: "outline", size: "large", width: 332 });
+
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGoogleCredential
+      });
+
+      window.google.accounts.id.renderButton(
+        googleBtnRef.current,
+        {
+          theme: "outline",
+          size: "large",
+          width: 332
+        }
+      );
     };
-    if (window.google) renderButton();
-    else { const script = document.createElement("script"); script.src = "https://accounts.google.com/gsi/client"; script.async = true; script.onload = renderButton; document.body.appendChild(script); }
+
+    if (window.google) {
+      renderButton();
+    } else {
+      const script = document.createElement("script");
+      script.src = "https://accounts.google.com/gsi/client";
+      script.async = true;
+      script.onload = renderButton;
+      document.body.appendChild(script);
+    }
   }, [handleGoogleCredential, step]);
 
   const title =
-    step === "verify" ? "Verify your email"
-    : step === "forgot" ? "Reset your password"
-    : step === "reset" ? "Choose a new password"
-    : mode === "login" ? "Log in" : "Create an account";
+    step === "verify" ? "Verify your email" :
+    step === "forgot" ? "Reset your password" :
+    step === "reset" ? "Choose a new password" :
+    mode === "login" ? "Log in" : "Create an account";
 
-  const linkBtn = { background: "none", border: "none", color: GOLD_DARK, fontWeight: 700, cursor: "pointer", fontSize: 12.5, padding: 0 };
+  const linkBtn = {
+    background: "none",
+    border: "none",
+    color: GOLD_DARK,
+    fontWeight: 700,
+    cursor: "pointer",
+    fontSize: 12.5,
+    padding: 0
+  };
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(20,18,12,0.4)" }} />
-      <div style={{ position: "relative", width: 380, maxWidth: "90vw", background: "#fff", borderRadius: 14, padding: 24 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <div style={{ fontWeight: 800, fontSize: 17 }}>{title}</div>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={20} /></button>
+    <div style={{
+      position: "fixed",
+      inset: 0,
+      zIndex: 60,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center"
+    }}>
+      <div
+        onClick={onClose}
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "rgba(20,18,12,0.4)"
+        }}
+      />
+
+      <div style={{
+        position: "relative",
+        width: 380,
+        maxWidth: "90vw",
+        background: "#fff",
+        borderRadius: 14,
+        padding: 24
+      }}>
+        <div style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 16
+        }}>
+          <div style={{ fontWeight: 800, fontSize: 17 }}>
+            {title}
+          </div>
+
+          <button
+            onClick={onClose}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer"
+            }}
+          >
+            <X size={20} />
+          </button>
         </div>
 
         {step === "verify" ? (
-          <form onSubmit={verify} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ background: "#FBF1DA", borderRadius: 8, padding: 12, fontSize: 12.5, color: "#6E5A1A" }}>We sent a 6-digit verification code to <b>{form.email}</b>.</div>
-            <input inputMode="numeric" maxLength={6} placeholder="6-digit code" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} style={{ ...inputStyle, textAlign: "center", letterSpacing: 6, fontSize: 20 }} required />
+          <form onSubmit={verify} style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 10
+          }}>
+            <div style={{
+              background: "#FBF1DA",
+              borderRadius: 8,
+              padding: 12,
+              fontSize: 12.5,
+              color: "#6E5A1A"
+            }}>
+              We sent a 6-digit verification code to <b>{form.email}</b>.
+            </div>
+
+            <input
+              inputMode="numeric"
+              maxLength={6}
+              placeholder="6-digit code"
+              value={code}
+              onChange={(e) =>
+                setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+              }
+              style={{
+                ...inputStyle,
+                textAlign: "center",
+                letterSpacing: 6,
+                fontSize: 20
+              }}
+              required
+            />
+
             {error && <div style={{ fontSize: 12.5, color: "#B3261E" }}>{error}</div>}
-            <button disabled={loading || code.length !== 6} style={{ padding: "11px 0", borderRadius: 8, border: "none", background: GOLD, color: "#fff", fontWeight: 700, cursor: "pointer" }}>{loading ? "Verifying..." : "Verify email"}</button>
-            <button type="button" onClick={resend} disabled={loading} style={{ padding: "9px 0", borderRadius: 8, border: "1px solid #E4DFD0", background: "#fff", fontWeight: 700, cursor: "pointer" }}>Resend code</button>
+            {info && <div style={{ fontSize: 12.5, color: "#2E7D32" }}>{info}</div>}
+
+            <button
+              disabled={loading || code.length !== 6}
+              style={{
+                padding: "11px 0",
+                borderRadius: 8,
+                border: "none",
+                background: GOLD,
+                color: "#fff",
+                fontWeight: 700,
+                cursor: "pointer"
+              }}
+            >
+              {loading ? "Verifying..." : "Verify email"}
+            </button>
+
+            <button
+              type="button"
+              onClick={resend}
+              disabled={loading}
+              style={{
+                padding: "9px 0",
+                borderRadius: 8,
+                border: "1px solid #E4DFD0",
+                background: "#fff",
+                fontWeight: 700,
+                cursor: "pointer"
+              }}
+            >
+              Resend code
+            </button>
           </form>
+
         ) : step === "forgot" ? (
-          <form onSubmit={requestReset} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ background: "#FBF1DA", borderRadius: 8, padding: 12, fontSize: 12.5, color: "#6E5A1A" }}>Enter the email you registered with and we'll send you a 6-digit code to reset your password.</div>
-            <input type="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} style={inputStyle} required />
+          <form onSubmit={requestReset} style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 10
+          }}>
+            <div style={{
+              background: "#FBF1DA",
+              borderRadius: 8,
+              padding: 12,
+              fontSize: 12.5,
+              color: "#6E5A1A"
+            }}>
+              Enter your registered email address. We'll send you a 6-digit password-reset code.
+            </div>
+
+            <input
+              type="email"
+              placeholder="Email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              style={inputStyle}
+              required
+            />
+
             {error && <div style={{ fontSize: 12.5, color: "#B3261E" }}>{error}</div>}
-            <button type="submit" disabled={loading} style={{ padding: "11px 0", borderRadius: 8, border: "none", background: GOLD, color: "#fff", fontWeight: 700, cursor: "pointer" }}>{loading ? "Sending..." : "Send reset code"}</button>
-            <div style={{ textAlign: "center" }}><button type="button" onClick={goToLogin} style={linkBtn}>Back to log in</button></div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                padding: "11px 0",
+                borderRadius: 8,
+                border: "none",
+                background: GOLD,
+                color: "#fff",
+                fontWeight: 700,
+                cursor: "pointer"
+              }}
+            >
+              {loading ? "Sending..." : "Send reset code"}
+            </button>
+
+            <div style={{ textAlign: "center" }}>
+              <button type="button" onClick={goToLogin} style={linkBtn}>
+                Back to log in
+              </button>
+            </div>
           </form>
+
         ) : step === "reset" ? (
-          <form onSubmit={resetPassword} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {info && <div style={{ background: "#E9F5EA", borderRadius: 8, padding: 12, fontSize: 12.5, color: "#2E7D32" }}>{info}</div>}
-            <input inputMode="numeric" maxLength={6} placeholder="6-digit code" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} style={{ ...inputStyle, textAlign: "center", letterSpacing: 6, fontSize: 20 }} required />
-            <PasswordInput placeholder="New password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
-            <PasswordInput placeholder="Repeat new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+          <form onSubmit={resetPassword} style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 10
+          }}>
+            {info && (
+              <div style={{
+                background: "#E9F5EA",
+                borderRadius: 8,
+                padding: 12,
+                fontSize: 12.5,
+                color: "#2E7D32"
+              }}>
+                {info}
+              </div>
+            )}
+
+            <input
+              inputMode="numeric"
+              maxLength={6}
+              placeholder="6-digit code"
+              value={code}
+              onChange={(e) =>
+                setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+              }
+              style={{
+                ...inputStyle,
+                textAlign: "center",
+                letterSpacing: 6,
+                fontSize: 20
+              }}
+              required
+            />
+
+            <PasswordInput
+              placeholder="New password"
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+            />
+
+            <PasswordInput
+              placeholder="Repeat new password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+            />
+
             {error && <div style={{ fontSize: 12.5, color: "#B3261E" }}>{error}</div>}
-            <button type="submit" disabled={loading || code.length !== 6} style={{ padding: "11px 0", borderRadius: 8, border: "none", background: GOLD, color: "#fff", fontWeight: 700, cursor: "pointer" }}>{loading ? "Updating..." : "Reset password"}</button>
-            <button type="button" onClick={() => requestReset()} disabled={loading} style={{ padding: "9px 0", borderRadius: 8, border: "1px solid #E4DFD0", background: "#fff", fontWeight: 700, cursor: "pointer" }}>Resend code</button>
-            <div style={{ textAlign: "center" }}><button type="button" onClick={goToLogin} style={linkBtn}>Back to log in</button></div>
+
+            <button
+              type="submit"
+              disabled={loading || code.length !== 6}
+              style={{
+                padding: "11px 0",
+                borderRadius: 8,
+                border: "none",
+                background: GOLD,
+                color: "#fff",
+                fontWeight: 700,
+                cursor: "pointer"
+              }}
+            >
+              {loading ? "Updating..." : "Reset password"}
+            </button>
+
+            <button
+              type="button"
+              onClick={requestReset}
+              disabled={loading}
+              style={{
+                padding: "9px 0",
+                borderRadius: 8,
+                border: "1px solid #E4DFD0",
+                background: "#fff",
+                fontWeight: 700,
+                cursor: "pointer"
+              }}
+            >
+              Resend reset code
+            </button>
+
+            <div style={{ textAlign: "center" }}>
+              <button type="button" onClick={goToLogin} style={linkBtn}>
+                Back to log in
+              </button>
+            </div>
           </form>
+
         ) : (
           <>
-            {GOOGLE_CLIENT_ID && <><div ref={googleBtnRef} style={{ display: "flex", justifyContent: "center", marginBottom: 14 }} /><div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0 16px", color: "#9a9484", fontSize: 12 }}><div style={{ flex: 1, height: 1, background: "#ECE8DD" }} />or continue with email<div style={{ flex: 1, height: 1, background: "#ECE8DD" }} /></div></>}
-            {info && <div style={{ background: "#E9F5EA", borderRadius: 8, padding: 12, fontSize: 12.5, color: "#2E7D32", marginBottom: 12 }}>{info}</div>}
-            <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {mode === "register" && <><input placeholder="Full name" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} style={inputStyle} required /><input placeholder="Phone number (07...)" value={form.phoneNumber} onChange={(e) => setForm({ ...form, phoneNumber: e.target.value })} style={inputStyle} required /></>}
-              <input type="email" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} style={inputStyle} required />
+            {GOOGLE_CLIENT_ID && (
+              <>
+                <div
+                  ref={googleBtnRef}
+                  style={{
+                    display: "flex",
+                    justifyContent: "center",
+                    marginBottom: 14
+                  }}
+                />
+
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  margin: "4px 0 16px",
+                  color: "#9a9484",
+                  fontSize: 12
+                }}>
+                  <div style={{ flex: 1, height: 1, background: "#ECE8DD" }} />
+                  or continue with email
+                  <div style={{ flex: 1, height: 1, background: "#ECE8DD" }} />
+                </div>
+              </>
+            )}
+
+            {info && (
+              <div style={{
+                background: "#E9F5EA",
+                borderRadius: 8,
+                padding: 12,
+                fontSize: 12.5,
+                color: "#2E7D32",
+                marginBottom: 12
+              }}>
+                {info}
+              </div>
+            )}
+
+            <form onSubmit={submit} style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 10
+            }}>
+              {mode === "register" && (
+                <>
+                  <input
+                    placeholder="Full name"
+                    value={form.fullName}
+                    onChange={(e) => setForm({ ...form, fullName: e.target.value })}
+                    style={inputStyle}
+                    required
+                  />
+
+                  <input
+                    placeholder="Phone number (07...)"
+                    value={form.phoneNumber}
+                    onChange={(e) => setForm({ ...form, phoneNumber: e.target.value })}
+                    style={inputStyle}
+                    required
+                  />
+                </>
+              )}
+
+              <input
+                type="email"
+                placeholder="Email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                style={inputStyle}
+                required
+              />
+
               <PasswordInput
                 placeholder="Password"
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
               />
+
               {mode === "register" && (
                 <PasswordInput
                   placeholder="Repeat password"
@@ -647,21 +1095,86 @@ function AuthModal({ onClose, onAuthed }) {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                 />
               )}
+
               {mode === "login" && (
                 <div style={{ textAlign: "right", marginTop: -4 }}>
-                  <button type="button" onClick={startForgot} style={linkBtn}>Forgot password?</button>
+                  <button
+                    type="button"
+                    onClick={startForgot}
+                    style={linkBtn}
+                  >
+                    Forgot password?
+                  </button>
                 </div>
               )}
+
               {error && <div style={{ fontSize: 12.5, color: "#B3261E" }}>{error}</div>}
-              <button type="submit" disabled={loading} style={{ padding: "11px 0", borderRadius: 8, border: "none", background: GOLD, color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>{loading ? <Loader2 size={15} className="spin" /> : mode === "login" ? <LogIn size={15} /> : <UserPlus size={15} />}{mode === "login" ? "Log in" : "Create account"}</button>
+
+              <button
+                type="submit"
+                disabled={loading}
+                style={{
+                  padding: "11px 0",
+                  borderRadius: 8,
+                  border: "none",
+                  background: GOLD,
+                  color: "#fff",
+                  fontWeight: 700,
+                  fontSize: 14,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6
+                }}
+              >
+                {loading ? (
+                  <Loader2 size={15} className="spin" />
+                ) : mode === "login" ? (
+                  <LogIn size={15} />
+                ) : (
+                  <UserPlus size={15} />
+                )}
+
+                {mode === "login" ? "Log in" : "Create account"}
+              </button>
             </form>
-            <div style={{ textAlign: "center", marginTop: 14, fontSize: 12.5, color: "#77715f" }}>{mode === "login" ? "New to Savivah? " : "Already have an account? "}<button onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); setInfo(""); setConfirmPassword(""); }} style={{ background: "none", border: "none", color: GOLD_DARK, fontWeight: 700, cursor: "pointer" }}>{mode === "login" ? "Create one" : "Log in"}</button></div>
+
+            <div style={{
+              textAlign: "center",
+              marginTop: 14,
+              fontSize: 12.5,
+              color: "#77715f"
+            }}>
+              {mode === "login" ? "New to Savivah? " : "Already have an account? "}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMode(mode === "login" ? "register" : "login");
+                  setError("");
+                  setInfo("");
+                  setConfirmPassword("");
+                  setForm((f) => ({ ...f, password: "" }));
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: GOLD_DARK,
+                  fontWeight: 700,
+                  cursor: "pointer"
+                }}
+              >
+                {mode === "login" ? "Create one" : "Log in"}
+              </button>
+            </div>
           </>
         )}
       </div>
     </div>
   );
 }
+
 
 function Hero() {
   const slides = [
